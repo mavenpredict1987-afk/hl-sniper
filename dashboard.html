@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HL Sniper Bot</title>
+<style>
+body{background:#0d1117;color:#c9d1d9;font-family:monospace;margin:0;padding:16px}
+h1{font-size:18px;color:#58a6ff;margin:0 0 12px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:12px}
+.big{font-size:28px;font-weight:bold}
+.green{color:#3fb950}.red{color:#f85149}.dim{color:#8b949e}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td,th{padding:4px 6px;border-bottom:1px solid #21262d;text-align:left}
+.refresh{color:#8b949e;font-size:11px}
+</style>
+</head>
+<body>
+<h1>HL SNIPER BOT <span class="dim" id="mode"></span></h1>
+<div class="card">
+<div class="dim">EQUITY</div>
+<div class="big green" id="eq">-</div>
+<div class="dim" id="sub"></div>
+</div>
+<div class="card">
+<div class="dim">POSITIONS <span id="pcount"></span></div>
+<table id="ptable"><tr><th>SYM</th><th>DIR</th><th>ENTRY</th><th>STOP</th><th>TARGET</th><th>SIZE</th></tr></table>
+</div>
+<div class="card">
+<div class="dim">PRICES</div>
+<table id="prices"></table>
+</div>
+<div class="card">
+<div class="dim">EVENTS</div>
+<div id="events" style="font-size:12px"></div>
+</div>
+<div class="refresh" id="ts"></div>
+<script>
+function fmt(x,d){if(x===undefined||x===null)return "-";return Number(x).toFixed(d===undefined?2:d)}
+async function load(){
+try{
+const r=await fetch("/status");const s=await r.json();
+document.getElementById("mode").textContent="["+s.mode+"] "+s.status+(s.halted?" HALTED":"")+(s.day_halt?" DAY-STOP":"");
+document.getElementById("eq").textContent="$"+fmt(s.equity);
+const dd=s.drawdown_pct||0;
+document.getElementById("sub").textContent="cash $"+fmt(s.cash)+" | peak $"+fmt(s.peak)+" | DD "+fmt(dd,1)+"% | trades "+s.trades_total+" | winrate "+fmt(s.winrate,1)+"%";
+const ps=s.positions||[];
+document.getElementById("pcount").textContent="("+ps.length+" open)";
+let rows="";
+for(const p of ps){
+rows+="<tr><td>"+p.symbol+"</td><td class='"+(p.direction==="long"?"green":"red")+"'>"+p.direction.toUpperCase()+"</td><td>"+fmt(p.entry,4)+"</td><td>"+fmt(p.stop,4)+"</td><td>"+fmt(p.target,4)+"</td><td>"+fmt(p.size,4)+"</td></tr>";
+}
+if(!ps.length)rows="<tr><td colspan='6' class='dim'>no open positions</td></tr>";
+document.getElementById("ptable").innerHTML="<tr><th>SYM</th><th>DIR</th><th>ENTRY</th><th>STOP</th><th>TARGET</th><th>SIZE</th></tr>"+rows;
+let pr="";
+for(const k in (s.prices||{})){pr+="<tr><td>"+k+"</td><td>"+fmt(s.prices[k],4)+"</td></tr>"}
+document.getElementById("prices").innerHTML=pr;
+let ev="";
+for(const e of (s.events||[])){ev+="<div>"+e+"</div>"}
+document.getElementById("events").innerHTML=ev||"<span class='dim'>no events</span>";
+document.getElementById("ts").textContent="updated "+new Date().toLocaleTimeString();
+}catch(e){document.getElementById("ts").textContent="status fetch failed"}
+}
+load();setInterval(load,5000);
+</script>
+</body>
+</html>
