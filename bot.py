@@ -26,6 +26,7 @@ class Position:
     size: float
     stop: float
     target: float
+    risk_dist: float
     atr_at_entry: float
     partial_done: bool = False
     entry_time: float = field(default_factory=time.time)
@@ -52,14 +53,11 @@ class Bot:
         self.loss_sum = 0.0
         self.last_prices = {}
         self.last_candle_ts = {}
-        self.reentries = {}
         self.client = HLClient()
         self.sniper = SniperModule()
-        self.status = {"status": "initialized", "mode": self.mode,
-                       "started": time.time()}
-        self._lock = threading.Lock()
+        self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
         setup_logging()
-        self._event("bot initialized mode=%s capital=%s" % (self.mode, money(self.capital)))
+        self._event("bot v1.1 initialized mode=%s capital=%s" % (self.mode, money(self.capital)))
 
     def _day_stamp(self):
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -91,8 +89,23 @@ class Bot:
         k = max(0.05, min(wr - (1 - wr) / (aw / al), 0.06))
         return max(config.MIN_RISK_PCT, min(k * config.KELLY_FRACTION, config.MAX_RISK_PCT))
 
-    def position_size(self, entry, stop, conv_score):
+    def cluster_of(self, symbol):
+        for name, members in config.CLUSTERS.items():
+            if symbol in members:
+                return name
+        return symbol
+
+    def cluster_risk(self, exclude=None):
+        risk = 0.0
+        for sym, p in self.positions.items():
+            if exclude and sym == exclude:
+                continue
+            risk += p.risk_dist * p.size
+        return risk
+
+    def position_size(self, entry, stop, conv_score, regime):
         risk_pct = self.kelly_risk()
+        risk_pct *= config.REGIME_SIZE_MULT.get(regime, 1.0)
         dd = (self.peak - self.equity) / self.peak
         if dd >= 0.10:
             risk_pct *= config.DD_BREAKER_10_PCT
@@ -111,7 +124,7 @@ class Bot:
             return 0.0
         return size
 
-    def open_position(self, symbol, direction, entry, atr_val, conv):
+    def open_position(self, symbol, direction, entry, atr_val, conv, book_slippage_pct):
         if self.halted or self.day_halt:
             return False
         if len(self.positions) >= config.MAX_POSITIONS:
@@ -120,21 +133,24 @@ class Bot:
             return False
         stop = entry - config.ATR_STOP_MULT * atr_val if direction == "long" else entry + config.ATR_STOP_MULT * atr_val
         target = entry + config.ATR_TARGET_MULT * atr_val if direction == "long" else entry - config.ATR_TARGET_MULT * atr_val
-        size = self.position_size(entry, stop, conv["score"])
+        risk_dist = abs(entry - stop)
+        regime = "normal"
+        size = self.position_size(entry, stop, conv["score"], regime)
         if size <= 0:
             return False
-        open_risk = sum(abs(p.entry - p.stop) * p.size for p in self.positions.values())
-        if open_risk + abs(entry - stop) * size > self.equity * config.MAX_TOTAL_RISK_PCT:
+        open_risk = sum(p.risk_dist * p.size for p in self.positions.values())
+        if open_risk + risk_dist * size > self.equity * config.MAX_TOTAL_RISK_PCT:
             return False
-        fill = entry * (1 + config.SLIPPAGE) if direction == "long" else entry * (1 - config.SLIPPAGE)
+        if self.cluster_risk() + risk_dist * size > self.equity * config.MAX_CLUSTER_RISK_PCT and self.cluster_of(symbol) in config.CLUSTERS:
+            return False
+        slip = max(book_slippage_pct / 100.0, config.SLIPPAGE / 4)
+        fill = entry * (1 + slip) if direction == "long" else entry * (1 - slip)
         fee = size * fill * config.TAKER_FEE
         self.cash -= fee
-        pos = Position(symbol, direction, fill, size, stop, target, atr_val)
-        self.positions[symbol] = pos
-        self.reentries[symbol] = self.reentries.get(symbol, 0)
-        self._event("OPEN %s %s @ %s size=%.4f stop=%s target=%s score=%.2f %s" % (
+        self.positions[symbol] = Position(symbol, direction, fill, size, stop, target, risk_dist, atr_val)
+        self._event("OPEN %s %s @ %s size=%.4f stop=%s target=%s score=%.2f %s slip=%.3f%%" % (
             direction.upper(), symbol, money(fill), size, money(stop), money(target),
-            conv["score"], conv["strength"]))
+            conv["score"], conv["strength"], book_slippage_pct))
         send_telegram("OPEN %s %s @ %s score=%.2f" % (direction.upper(), symbol, money(fill), conv["score"]))
         return True
 
@@ -142,7 +158,8 @@ class Bot:
         pos = self.positions.pop(symbol, None)
         if not pos:
             return
-        fill = price * (1 - config.SLIPPAGE) if pos.direction == "long" else price * (1 + config.SLIPPAGE)
+        slip = config.SLIPPAGE / 4
+        fill = price * (1 - slip) if pos.direction == "long" else price * (1 + slip)
         pnl = (fill - pos.entry) * pos.size if pos.direction == "long" else (pos.entry - fill) * pos.size
         fee = pos.size * fill * config.TAKER_FEE
         net = pnl - fee
@@ -164,38 +181,51 @@ class Bot:
             px = self.last_prices.get(symbol)
             if not px:
                 continue
+            r = pos.risk_dist
             if pos.direction == "long":
                 if px <= pos.stop:
                     self.close_position(symbol, px, "stop")
                     continue
-                if not pos.partial_done and px >= pos.entry + config.ATR_PARTIAL_MULT * pos.atr_at_entry:
-                    half = pos.size / 2
-                    pos.size -= half
-                    pos.stop = pos.entry
-                    pos.partial_done = True
-                    self._event("PARTIAL %s closed 50%% @ %s" % (symbol, money(px)))
-                elif pos.partial_done and px > pos.entry + 1.5 * pos.atr_at_entry:
-                    pos.stop = max(pos.stop, pos.entry + 0.5 * pos.atr_at_entry)
+                if not pos.partial_done and px >= pos.entry + config.PARTIAL_AT_R * r:
+                    keep = pos.size * (1 - config.PARTIAL_RATIO)
+                    pos.size, pos.stop, pos.partial_done = keep, pos.entry, True
+                    self._event("PARTIAL %s closed 50%% @ %s stop->entry" % (symbol, money(px)))
+                if pos.partial_done and px > pos.entry + (config.PARTIAL_AT_R + 1.0) * r:
+                    pos.stop = max(pos.stop, pos.entry + 0.5 * r)
                 if px >= pos.target:
                     self.close_position(symbol, px, "target")
             else:
                 if px >= pos.stop:
                     self.close_position(symbol, px, "stop")
                     continue
-                if not pos.partial_done and px <= pos.entry - config.ATR_PARTIAL_MULT * pos.atr_at_entry:
-                    half = pos.size / 2
-                    pos.size -= half
-                    pos.stop = pos.entry
-                    pos.partial_done = True
-                    self._event("PARTIAL %s closed 50%% @ %s" % (symbol, money(px)))
-                elif pos.partial_done and px < pos.entry - 1.5 * pos.atr_at_entry:
-                    pos.stop = min(pos.stop, pos.entry - 0.5 * pos.atr_at_entry)
+                if not pos.partial_done and px <= pos.entry - config.PARTIAL_AT_R * r:
+                    keep = pos.size * (1 - config.PARTIAL_RATIO)
+                    pos.size, pos.stop, pos.partial_done = keep, pos.entry, True
+                    self._event("PARTIAL %s closed 50%% @ %s stop->entry" % (symbol, money(px)))
+                if pos.partial_done and px < pos.entry - (config.PARTIAL_AT_R + 1.0) * r:
+                    pos.stop = min(pos.stop, pos.entry - 0.5 * r)
                 if px <= pos.target:
                     self.close_position(symbol, px, "target")
+
+    def regime_of(self, atr_now, atr_slow):
+        if atr_slow <= 0:
+            return "normal"
+        ratio = atr_now / atr_slow
+        if ratio < config.REGIME_LOW:
+            return "low"
+        if ratio > config.REGIME_HIGH:
+            return "high"
+        return "normal"
 
     def analyze_symbol(self, symbol, ctxs):
         now_ms = int(time.time() * 1000)
         start_ms = now_ms - config.CANDLE_COUNT * 3600 * 1000
+        ctx = ctxs.get(symbol) or {}
+        if ctx.get("day_volume_usd", 0) < config.MIN_VOLUME_USD:
+            return
+        if abs(ctx.get("premium", 0)) > config.PREMIUM_MAX_PCT:
+            self._event("skip %s: premium %.2f%%" % (symbol, ctx.get("premium", 0) * 100))
+            return
         candles = self.client.candles(symbol, config.TIMEFRAME, start_ms, now_ms)
         if len(candles) < 60:
             self._event("skip %s: not enough candles" % symbol)
@@ -208,36 +238,43 @@ class Bot:
         a = atr(highs, lows, closes)
         if a <= 0:
             return
+        atrs = []
+        for i in range(30, len(candles)):
+            atrs.append(atr(highs[:i], lows[:i], closes[:i]))
+        atr_slow = sma(atrs, 50)
+        regime = self.regime_of(a, atr_slow)
         e_fast = ema(closes[-60:], 20)
         e_slow = ema(closes[-120:], 50)
         direction = "long" if e_fast > e_slow else "short"
         ax = adx(highs, lows, closes)
-        v_ratio = vols[-2] / sma(vols[-21:-1], 20) if sma(vols[-21:-1], 20) > 0 else 0.0
+        base_vol = sma(vols[-21:-1], 20)
+        v_ratio = vols[-2] / base_vol if base_vol > 0 else 0.0
         levels = find_levels(highs[:-1], lows[:-1], vols[:-1], a)
         prev = candles[-2]
         if not breakout_confirmed(levels, direction, prev["l"], prev["h"], last_close, a):
             return
-        s_trend = generate_trend_signal(direction, ax, config.ADX_MIN)
-        if s_trend is not None:
-            self.sniper.convergence.add_signal(symbol, "trend", direction, s_trend)
-        s_vol = generate_volume_signal(v_ratio, config.VOLUME_RATIO_MIN)
-        if s_vol is not None:
-            self.sniper.convergence.add_signal(symbol, "volume", direction, s_vol)
+        self.sniper.convergence.add_signal(symbol, generate_trend_signal(direction, ax, config.ADX_MIN))
+        self.sniper.convergence.add_signal(symbol, generate_volume_signal(direction, v_ratio, config.VOLUME_RATIO_MIN))
         book = self.client.l2_book(symbol)
-        if book:
-            s_ob = generate_orderbook_signal(direction, book["bid_depth"], book["ask_depth"])
-            if s_ob is not None:
-                self.sniper.convergence.add_signal(symbol, "orderbook", direction, s_ob)
-        ctx = ctxs.get(symbol) or {}
-        s_fund = generate_funding_signal(direction, ctx.get("funding", 0.0))
-        self.sniper.convergence.add_signal(symbol, "funding", direction, s_fund)
+        if not book:
+            return
+        self.sniper.update_order_book(symbol, book["bids"], book["asks"])
+        d = self.sniper.order_books[symbol].depth()
+        self.sniper.convergence.add_signal(symbol, generate_orderbook_signal(direction, d["ratio"]))
+        self.sniper.convergence.add_signal(symbol, generate_funding_signal(direction, ctx.get("funding", 0.0)))
         conv = self.sniper.convergence.evaluate(symbol)
-        if not conv:
+        if not conv or conv["direction"] != direction:
             return
-        if conv["direction"] != direction:
+        stop = last_close - config.ATR_STOP_MULT * a if direction == "long" else last_close + config.ATR_STOP_MULT * a
+        size = self.position_size(last_close, stop, conv["score"], regime)
+        if size <= 0:
             return
-        self._event("CONVERGENCE %s %s score=%.2f %s" % (symbol, direction.upper(), conv["score"], conv["strength"]))
-        self.open_position(symbol, direction, last_close, a, conv)
+        result = self.sniper.execute_snipe(symbol, direction, size, conv)
+        if result["status"] != "executed":
+            self._event("SNIPER REJECT %s: %s" % (symbol, result.get("reason", "?")))
+            return
+        slip_pct = result["decision"]["slippage_pct"]
+        self.open_position(symbol, direction, last_close, a, conv, slip_pct)
 
     def check_halts(self):
         dd = (self.peak - self.equity) / self.peak
@@ -252,7 +289,7 @@ class Bot:
             self.day_halt = False
         if not self.day_halt and self.equity < self.day_start_equity * (1 - config.DAILY_STOP_PCT):
             self.day_halt = True
-            self._event("DAILY STOP hit: %.1f%% - entries blocked until tomorrow" % (config.DAILY_STOP_PCT * 100))
+            self._event("DAILY STOP: entries blocked until tomorrow UTC")
             send_telegram("DAILY STOP - entries blocked until tomorrow UTC")
 
     def update_status(self):
@@ -268,8 +305,7 @@ class Bot:
             "winrate": round(100.0 * self.win_count / len(self.trades), 1) if self.trades else 0.0,
             "positions_open": len(self.positions),
             "halted": self.halted, "day_halt": self.day_halt,
-            "symbols": config.SYMBOLS,
-            "prices": self.last_prices,
+            "symbols": config.SYMBOLS, "prices": self.last_prices,
             "sniper_stats": self.sniper.get_stats(),
             "events": list(reversed(self.events[:20]))})
         HealthHandler.bot_status = self.status
@@ -278,8 +314,8 @@ class Bot:
         self.running = True
         self.status["status"] = "running"
         threading.Thread(target=start_health_server, kwargs={"port": config.PORT}, daemon=True).start()
-        self._event("bot started, polling every %ds" % config.PRICE_POLL_SEC)
-        send_telegram("HL sniper bot started mode=%s capital=%s" % (self.mode, money(self.capital)))
+        self._event("bot v1.1 started, polling every %ds" % config.PRICE_POLL_SEC)
+        send_telegram("HL sniper bot v1.1 started mode=%s capital=%s" % (self.mode, money(self.capital)))
         while self.running:
             try:
                 mids = self.client.all_mids()
@@ -292,8 +328,7 @@ class Bot:
                     if sym not in self.last_prices:
                         continue
                     now_ms = int(time.time() * 1000)
-                    candles = self.client.candles(sym, config.TIMEFRAME,
-                                                  now_ms - 2 * 3600 * 1000, now_ms)
+                    candles = self.client.candles(sym, config.TIMEFRAME, now_ms - 2 * 3600 * 1000, now_ms)
                     if len(candles) < 2:
                         continue
                     closed_ts = candles[-2]["t"]

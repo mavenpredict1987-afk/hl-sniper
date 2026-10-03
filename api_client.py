@@ -46,16 +46,21 @@ class HLClient:
                 continue
         return out
 
-    def l2_book(self, coin):
+    def l2_book(self, coin, depth: int = 10):
+        """Returns top-of-book levels as (px, sz) lists plus mid prices."""
         data = self._post({"type": "l2Book", "coin": coin})
         if not data or "levels" not in data or not data["levels"]:
             return None
-        bids, asks = data["levels"][0], data["levels"][1]
-        bid_depth = sum(float(b["sz"]) * float(b["px"]) for b in bids[:10] if b)
-        ask_depth = sum(float(a["sz"]) * float(a["px"]) for a in asks[:10] if a)
-        return {"bid_depth": bid_depth, "ask_depth": ask_depth,
-                "bid_px": float(bids[0]["px"]) if bids else 0.0,
-                "ask_px": float(asks[0]["px"]) if asks else 0.0}
+        bids_raw, asks_raw = data["levels"][0], data["levels"][1]
+        try:
+            bids = [(float(b["px"]), float(b["sz"])) for b in bids_raw[:depth] if b]
+            asks = [(float(a["px"]), float(a["sz"])) for a in asks_raw[:depth] if a]
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not bids or not asks:
+            return None
+        return {"bids": bids, "asks": asks,
+                "bid_px": bids[0][0], "ask_px": asks[0][0]}
 
     def meta_and_ctxs(self, cache_sec=60):
         now = time.time()
@@ -76,6 +81,9 @@ class HLClient:
                 out[name] = {
                     "funding": float(ctxs[i].get("funding", 0)),
                     "mark": float(ctxs[i].get("markPx", 0)),
+                    "premium": float(ctxs[i].get("premium", 0)),
+                    "day_volume_usd": float(ctxs[i].get("dayNtlVlm", 0)),
+                    "open_interest": float(ctxs[i].get("openInterest", 0)),
                     "max_leverage": float(asset.get("maxLeverage", 5)),
                     "sz_decimals": int(asset.get("szDecimals", 3))}
             except (TypeError, ValueError):
