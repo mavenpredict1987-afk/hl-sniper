@@ -28,6 +28,8 @@ class Position:
     target: float
     risk_dist: float
     atr_at_entry: float
+    initial_size: float = 0.0
+    initial_risk_usd: float = 0.0
     partial_done: bool = False
     entry_time: float = field(default_factory=time.time)
 
@@ -53,6 +55,8 @@ class Bot:
         self.loss_sum = 0.0
         self.last_prices = {}
         self.last_candle_ts = {}
+        self.cooldowns = {}
+        self.r_sum = 0.0
         self.client = HLClient()
         self.sniper = SniperModule()
         self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
@@ -131,6 +135,9 @@ class Bot:
             return False
         if symbol in self.positions:
             return False
+        cd = self.cooldowns.get(symbol, 0)
+        if time.time() < cd:
+            return False
         stop = entry - config.ATR_STOP_MULT * atr_val if direction == "long" else entry + config.ATR_STOP_MULT * atr_val
         target = entry + config.ATR_TARGET_MULT * atr_val if direction == "long" else entry - config.ATR_TARGET_MULT * atr_val
         risk_dist = abs(entry - stop)
@@ -147,7 +154,10 @@ class Bot:
         fill = entry * (1 + slip) if direction == "long" else entry * (1 - slip)
         fee = size * fill * config.TAKER_FEE
         self.cash -= fee
-        self.positions[symbol] = Position(symbol, direction, fill, size, stop, target, risk_dist, atr_val)
+        pos = Position(symbol, direction, fill, size, stop, target, risk_dist, atr_val)
+        pos.initial_size = size
+        pos.initial_risk_usd = risk_dist * size
+        self.positions[symbol] = pos
         self._event("OPEN %s %s @ %s size=%.4f stop=%s target=%s score=%.2f %s slip=%.3f%%" % (
             direction.upper(), symbol, money(fill), size, money(stop), money(target),
             conv["score"], conv["strength"], book_slippage_pct))
@@ -171,25 +181,43 @@ class Bot:
         else:
             self.loss_count += 1
             self.loss_sum += abs(ret_pct)
+        risk_usd = pos.initial_risk_usd or (pos.risk_dist * pos.size)
+        r_mult = net / risk_usd if risk_usd > 0 else 0.0
+        self.r_sum += r_mult
         self.trades.append({"symbol": symbol, "direction": pos.direction, "entry": pos.entry,
-                            "exit": fill, "pnl": net, "reason": reason, "time": time.time()})
+                            "exit": fill, "pnl": net, "r": round(r_mult, 2),
+                            "reason": reason, "time": time.time()})
         self._event("CLOSE %s @ %s pnl=%s (%s)" % (symbol, money(fill), money(net), reason))
         send_telegram("CLOSE %s pnl=%s (%s)" % (symbol, money(net), reason))
+
+    def book_partial(self, pos, symbol, px):
+        closed = pos.size * config.PARTIAL_RATIO
+        fill = px * (1 - config.SLIPPAGE / 4) if pos.direction == "long" else px * (1 + config.SLIPPAGE / 4)
+        pnl = (fill - pos.entry) * closed if pos.direction == "long" else (pos.entry - fill) * closed
+        fee = closed * fill * config.TAKER_FEE
+        self.cash += pnl - fee
+        pos.size -= closed
+        self._event("PARTIAL %s closed %.0f%% @ %s booked pnl=%s" % (
+            symbol, config.PARTIAL_RATIO * 100, money(fill), money(pnl - fee)))
 
     def manage_positions(self):
         for symbol, pos in list(self.positions.items()):
             px = self.last_prices.get(symbol)
             if not px:
                 continue
+            if time.time() - pos.entry_time > config.TIME_STOP_HOURS * 3600:
+                self.close_position(symbol, px, "time_stop")
+                self.cooldowns[symbol] = time.time() + config.COOLDOWN_AFTER_STOP_H * 3600
+                continue
             r = pos.risk_dist
             if pos.direction == "long":
                 if px <= pos.stop:
                     self.close_position(symbol, px, "stop")
+                    self.cooldowns[symbol] = time.time() + config.COOLDOWN_AFTER_STOP_H * 3600
                     continue
                 if not pos.partial_done and px >= pos.entry + config.PARTIAL_AT_R * r:
-                    keep = pos.size * (1 - config.PARTIAL_RATIO)
-                    pos.size, pos.stop, pos.partial_done = keep, pos.entry, True
-                    self._event("PARTIAL %s closed 50%% @ %s stop->entry" % (symbol, money(px)))
+                    self.book_partial(pos, symbol, px)
+                    pos.stop, pos.partial_done = pos.entry, True
                 if pos.partial_done and px > pos.entry + (config.PARTIAL_AT_R + 1.0) * r:
                     pos.stop = max(pos.stop, pos.entry + 0.5 * r)
                 if px >= pos.target:
@@ -197,11 +225,11 @@ class Bot:
             else:
                 if px >= pos.stop:
                     self.close_position(symbol, px, "stop")
+                    self.cooldowns[symbol] = time.time() + config.COOLDOWN_AFTER_STOP_H * 3600
                     continue
                 if not pos.partial_done and px <= pos.entry - config.PARTIAL_AT_R * r:
-                    keep = pos.size * (1 - config.PARTIAL_RATIO)
-                    pos.size, pos.stop, pos.partial_done = keep, pos.entry, True
-                    self._event("PARTIAL %s closed 50%% @ %s stop->entry" % (symbol, money(px)))
+                    self.book_partial(pos, symbol, px)
+                    pos.stop, pos.partial_done = pos.entry, True
                 if pos.partial_done and px < pos.entry - (config.PARTIAL_AT_R + 1.0) * r:
                     pos.stop = min(pos.stop, pos.entry - 0.5 * r)
                 if px <= pos.target:
@@ -218,6 +246,8 @@ class Bot:
         return "normal"
 
     def analyze_symbol(self, symbol, ctxs):
+        if time.time() < self.cooldowns.get(symbol, 0):
+            return
         now_ms = int(time.time() * 1000)
         start_ms = now_ms - config.CANDLE_COUNT * 3600 * 1000
         ctx = ctxs.get(symbol) or {}
@@ -266,6 +296,10 @@ class Bot:
         if not conv or conv["direction"] != direction:
             return
         stop = last_close - config.ATR_STOP_MULT * a if direction == "long" else last_close + config.ATR_STOP_MULT * a
+        target_dist = config.ATR_TARGET_MULT * a
+        if target_dist / last_close < config.MIN_TARGET_PCT:
+            self._event("skip %s: target %.2f%% below viability floor" % (symbol, 100 * target_dist / last_close))
+            return
         size = self.position_size(last_close, stop, conv["score"], regime)
         if size <= 0:
             return
@@ -303,6 +337,7 @@ class Bot:
             "positions": [p.__dict__ for p in self.positions.values()],
             "trades_total": len(self.trades),
             "winrate": round(100.0 * self.win_count / len(self.trades), 1) if self.trades else 0.0,
+            "avg_r": round(self.r_sum / len(self.trades), 2) if self.trades else 0.0,
             "positions_open": len(self.positions),
             "halted": self.halted, "day_halt": self.day_halt,
             "symbols": config.SYMBOLS, "prices": self.last_prices,

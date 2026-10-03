@@ -43,7 +43,7 @@ const r=await fetch("/status");const s=await r.json();
 document.getElementById("mode").textContent="["+s.mode+"] "+s.status+(s.halted?" HALTED":"")+(s.day_halt?" DAY-STOP":"");
 document.getElementById("eq").textContent="$"+fmt(s.equity);
 const dd=s.drawdown_pct||0;
-document.getElementById("sub").textContent="cash $"+fmt(s.cash)+" | peak $"+fmt(s.peak)+" | DD "+fmt(dd,1)+"% | trades "+s.trades_total+" | winrate "+fmt(s.winrate,1)+"%";
+document.getElementById("sub").textContent="cash $"+fmt(s.cash)+" | peak $"+fmt(s.peak)+" | DD "+fmt(dd,1)+"% | trades "+s.trades_total+" | winrate "+fmt(s.winrate,1)+"% | avg R "+fmt(s.avg_r,2);
 const ps=s.positions||[];
 document.getElementById("pcount").textContent="("+ps.length+" open)";
 let rows="";
