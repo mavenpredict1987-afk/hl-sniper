@@ -20,11 +20,12 @@ class HLClient:
         return None
 
     def all_mids(self):
+        # Hyperliquid returns a flat dict {"BTC": "97000.0", ...} - no wrapper key
         data = self._post({"type": "allMids"})
-        if not data or "mids" not in data:
+        if not isinstance(data, dict):
             return {}
         out = {}
-        for coin, px in data["mids"].items():
+        for coin, px in data.items():
             try:
                 out[coin] = float(px)
             except (TypeError, ValueError):
