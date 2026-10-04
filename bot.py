@@ -57,6 +57,7 @@ class Bot:
         self.last_candle_ts = {}
         self.cooldowns = {}
         self.r_sum = 0.0
+        self.equity_history = []
         self.client = HLClient()
         self.sniper = SniperModule()
         self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
@@ -329,6 +330,13 @@ class Bot:
     def update_status(self):
         self._recalc_equity()
         self.check_halts()
+        self.equity_history.append([round(time.time(), 1), round(self.equity, 2)])
+        if len(self.equity_history) > 1440:
+            self.equity_history = self.equity_history[-1440:]
+        open_risk = 0.0
+        for p in self.positions.values():
+            open_risk += p.risk_dist * p.size
+        day_pnl = self.equity - self.day_start_equity
         self.status.update({
             "status": "running" if self.running else "stopped",
             "mode": self.mode, "equity": round(self.equity, 2),
@@ -342,6 +350,15 @@ class Bot:
             "halted": self.halted, "day_halt": self.day_halt,
             "symbols": config.SYMBOLS, "prices": self.last_prices,
             "sniper_stats": self.sniper.get_stats(),
+            "equity_history": list(self.equity_history),
+            "trades": list(reversed(self.trades[-30:])),
+            "day_pnl": round(day_pnl, 2),
+            "day_pnl_pct": round(day_pnl / self.day_start_equity * 100, 2) if self.day_start_equity else 0.0,
+            "kelly_risk_pct": round(self.kelly_risk() * 100, 2),
+            "open_risk": round(open_risk, 2),
+            "open_risk_pct": round(open_risk / self.equity * 100, 2) if self.equity else 0.0,
+            "wins": self.win_count, "losses": self.loss_count,
+            "uptime_sec": round(time.time() - self.status.get("started", time.time()), 1),
             "events": list(reversed(self.events[:20]))})
         HealthHandler.bot_status = self.status
 
