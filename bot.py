@@ -16,6 +16,7 @@ from sniper import (SniperModule, generate_trend_signal, generate_volume_signal,
                     generate_orderbook_signal, generate_funding_signal)
 from health_server import start_health_server, HealthHandler
 from utils import setup_logging, send_telegram, money, logger
+import state_store
 
 
 @dataclass
@@ -61,11 +62,99 @@ class Bot:
         self.client = HLClient()
         self.sniper = SniperModule()
         self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
+        self.restarts = 0
+        self.last_save_ts = 0.0
+        self.state_source = None
         setup_logging()
-        self._event("bot v1.1 initialized mode=%s capital=%s" % (self.mode, money(self.capital)))
+        self._restore_state()
 
     def _day_stamp(self):
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _state_snapshot(self):
+        return {
+            "mode": self.mode,
+            "capital": self.capital,
+            "cash": self.cash,
+            "equity": self.equity,
+            "peak": self.peak,
+            "positions": {sym: p.__dict__ for sym, p in self.positions.items()},
+            "trades": list(self.trades),
+            "events": list(self.events),
+            "win_count": self.win_count,
+            "loss_count": self.loss_count,
+            "win_sum": self.win_sum,
+            "loss_sum": self.loss_sum,
+            "r_sum": self.r_sum,
+            "cooldowns": dict(self.cooldowns),
+            "last_prices": dict(self.last_prices),
+            "last_candle_ts": dict(self.last_candle_ts),
+            "equity_history": list(self.equity_history),
+            "halted": self.halted,
+            "day_halt": self.day_halt,
+            "day_stamp": self.day_stamp,
+            "day_start_equity": self.day_start_equity,
+            "started": self.status.get("started", time.time()),
+            "restarts": self.restarts,
+            "sniper": {
+                "execution_history": list(self.sniper.execution_history),
+                "rejected": self.sniper.rejected,
+            },
+        }
+
+    def _restore_state(self):
+        if os.getenv("RESET_STATE", "").strip().lower() in ("1", "true", "yes"):
+            state_store.clear()
+            self._event("RESET_STATE set: starting from a clean state")
+            self._event("bot v1.1 initialized mode=%s capital=%s" % (self.mode, money(self.capital)))
+            return
+        data, source = state_store.load()
+        if not data:
+            self._event("bot v1.1 initialized mode=%s capital=%s" % (self.mode, money(self.capital)))
+            return
+        self.state_source = source
+        self.capital = float(data.get("capital", self.capital))
+        self.cash = float(data.get("cash", self.cash))
+        self.equity = float(data.get("equity", self.equity))
+        self.peak = float(data.get("peak", self.peak))
+        self.positions = {}
+        for sym, raw in (data.get("positions") or {}).items():
+            try:
+                self.positions[sym] = Position(**raw)
+            except TypeError:
+                continue
+        self.trades = list(data.get("trades") or [])
+        self.events = list(data.get("events") or [])
+        self.win_count = int(data.get("win_count", 0))
+        self.loss_count = int(data.get("loss_count", 0))
+        self.win_sum = float(data.get("win_sum", 0.0))
+        self.loss_sum = float(data.get("loss_sum", 0.0))
+        self.r_sum = float(data.get("r_sum", 0.0))
+        self.cooldowns = {k: float(v) for k, v in (data.get("cooldowns") or {}).items()}
+        self.last_prices = {k: float(v) for k, v in (data.get("last_prices") or {}).items()}
+        self.last_candle_ts = dict(data.get("last_candle_ts") or {})
+        self.equity_history = [list(x) for x in (data.get("equity_history") or [])]
+        self.halted = bool(data.get("halted", False))
+        self.day_halt = bool(data.get("day_halt", False))
+        self.day_stamp = data.get("day_stamp") or self._day_stamp()
+        self.day_start_equity = float(data.get("day_start_equity", self.equity))
+        sniper = data.get("sniper") or {}
+        self.sniper.execution_history = list(sniper.get("execution_history") or [])
+        self.sniper.rejected = int(sniper.get("rejected", 0))
+        self.status["started"] = float(data.get("started", self.status["started"]))
+        self.restarts = int(data.get("restarts", 0)) + 1
+        self._event("bot v1.2 resumed from %s: trades=%d equity=%s open=%d" % (
+            os.path.basename(source), len(self.trades), money(self.equity), len(self.positions)))
+
+    def _save_state(self, force=False):
+        now = time.time()
+        if not force and now - self.last_save_ts < config.STATE_SAVE_SEC:
+            return
+        try:
+            state_store.save(self._state_snapshot())
+            self.last_save_ts = now
+        except (OSError, TypeError, ValueError) as exc:
+            logger.warning("state save failed: %s", exc)
 
     def _event(self, msg):
         line = "%s | %s" % (time.strftime("%H:%M:%S"), msg)
@@ -163,6 +252,7 @@ class Bot:
             direction.upper(), symbol, money(fill), size, money(stop), money(target),
             conv["score"], conv["strength"], book_slippage_pct))
         send_telegram("OPEN %s %s @ %s score=%.2f" % (direction.upper(), symbol, money(fill), conv["score"]))
+        self._save_state(force=True)
         return True
 
     def close_position(self, symbol, price, reason):
@@ -190,6 +280,7 @@ class Bot:
                             "reason": reason, "time": time.time()})
         self._event("CLOSE %s @ %s pnl=%s (%s)" % (symbol, money(fill), money(net), reason))
         send_telegram("CLOSE %s pnl=%s (%s)" % (symbol, money(net), reason))
+        self._save_state(force=True)
 
     def book_partial(self, pos, symbol, px):
         closed = pos.size * config.PARTIAL_RATIO
@@ -200,6 +291,7 @@ class Bot:
         pos.size -= closed
         self._event("PARTIAL %s closed %.0f%% @ %s booked pnl=%s" % (
             symbol, config.PARTIAL_RATIO * 100, money(fill), money(pnl - fee)))
+        self._save_state(force=True)
 
     def manage_positions(self):
         for symbol, pos in list(self.positions.items()):
@@ -359,8 +451,11 @@ class Bot:
             "open_risk_pct": round(open_risk / self.equity * 100, 2) if self.equity else 0.0,
             "wins": self.win_count, "losses": self.loss_count,
             "uptime_sec": round(time.time() - self.status.get("started", time.time()), 1),
-            "events": list(reversed(self.events[:20]))})
+            "state_path": state_store.state_path(),
+            "restarts": self.restarts,
+            "events": list(reversed(self.events[-20:]))})
         HealthHandler.bot_status = self.status
+        self._save_state()
 
     def run(self):
         self.running = True
@@ -397,6 +492,7 @@ class Bot:
         self.running = False
         self.update_status()
         self._event("bot stopped")
+        self._save_state(force=True)
 
 
 if __name__ == "__main__":

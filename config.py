@@ -5,6 +5,11 @@ TRADING_MODE = os.getenv("TRADING_MODE", "paper")
 INITIAL_CAPITAL = float(os.getenv("INITIAL_CAPITAL", "10000"))
 SYMBOLS = [s.strip() for s in os.getenv("SYMBOLS", "BTC,ETH,SOL").split(",") if s.strip()]
 
+# Persistence. STATE_DIR should point at a mounted volume (for example /data)
+# so paper statistics survive a redeploy, not just a process restart.
+STATE_DIR = os.getenv("STATE_DIR", "")
+STATE_SAVE_SEC = int(os.getenv("STATE_SAVE_SEC", "30"))
+
 HL_INFO_URL = os.getenv("HL_INFO_URL", "https://api.hyperliquid.xyz/info")
 API_TIMEOUT = 10
 PRICE_POLL_SEC = 5

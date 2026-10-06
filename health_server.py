@@ -20,6 +20,15 @@ class HealthHandler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"ok": True}))
         elif self.path == "/status":
             self._send(200, json.dumps(HealthHandler.bot_status))
+        elif self.path == "/export":
+            data = json.dumps(HealthHandler.bot_status, indent=2).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Disposition",
+                             'attachment; filename="hl-sniper-state.json"')
+            self.end_headers()
+            self.wfile.write(data)
         elif self.path in ("/", "/index.html"):
             path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
             try:
