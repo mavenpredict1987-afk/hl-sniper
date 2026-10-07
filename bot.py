@@ -66,6 +66,7 @@ class Bot:
         self.restarts = 0
         self.last_save_ts = 0.0
         self.state_source = None
+        self.resumed = False
         self.universe = {}
         self.active_symbols = list(config.SYMBOLS)
         self.last_hour_bucket = 0
@@ -192,6 +193,7 @@ class Bot:
             self._event("bot v1.1 initialized mode=%s capital=%s" % (self.mode, money(self.capital)))
             return
         self.state_source = source
+        self.resumed = True
         self.capital = float(data.get("capital", self.capital))
         self.cash = float(data.get("cash", self.cash))
         self.equity = float(data.get("equity", self.equity))
@@ -608,8 +610,10 @@ class Bot:
         self.status["status"] = "running"
         threading.Thread(target=start_health_server, kwargs={"port": config.PORT}, daemon=True).start()
         threading.Thread(target=self._universe_loop, daemon=True).start()
-        self._event("bot v1.1 started, polling every %ds" % config.PRICE_POLL_SEC)
-        send_telegram("HL sniper bot v1.1 started mode=%s capital=%s" % (self.mode, money(self.capital)))
+        self._event("bot v1.2 started, polling every %ds" % config.PRICE_POLL_SEC)
+        send_telegram("HL sniper v1.2 %s | %s | equity=$%s trades=%d universe=%d restarts=%d" % (
+            "resumed" if self.resumed else "cold start", self.mode, money(self.equity),
+            len(self.trades), len(self.active_symbols), self.restarts))
         while self.running:
             try:
                 mids = self.client.all_mids()
