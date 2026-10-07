@@ -17,6 +17,7 @@ from sniper import (SniperModule, generate_trend_signal, generate_volume_signal,
 from health_server import start_health_server, HealthHandler
 from utils import setup_logging, send_telegram, money, logger
 import state_store
+import universe
 
 
 @dataclass
@@ -65,11 +66,86 @@ class Bot:
         self.restarts = 0
         self.last_save_ts = 0.0
         self.state_source = None
+        self.universe = {}
+        self.active_symbols = list(config.SYMBOLS)
+        self.last_hour_bucket = 0
         setup_logging()
+        self._load_universe()
         self._restore_state()
 
     def _day_stamp(self):
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    def _load_universe(self):
+        """Coins we may trade: from the scan cache, else the configured majors."""
+        rows = universe.load_or_seed()
+        self.universe = {r["coin"]: r for r in rows}
+        self.active_symbols = [r["coin"] for r in rows]
+        return rows
+
+    def _universe_age_sec(self):
+        data, _ = state_store.load(path=universe.cache_path())
+        if not data:
+            return None
+        return time.time() - float(data.get("scanned_at") or 0)
+
+    def refresh_universe(self):
+        """Rescan the exchange in the background. A failure keeps the old list."""
+        if not config.UNIVERSE_ENABLED:
+            return False
+        try:
+            rows, pool = universe.scan(HLClient(), log=self._event)
+        except Exception as exc:  # noqa: BLE001 - never kill the trading loop
+            self._event("universe: refresh failed (%s)" % exc)
+            return False
+        if not rows:
+            self._event("universe: nothing tradable, keeping %d symbols" % len(self.active_symbols))
+            return False
+        universe.save(rows)
+        self._load_universe()
+        self._event("universe: %d tradable of %d scanned" % (len(rows), len(pool)))
+        return True
+
+    def _universe_loop(self):
+        ttl = max(config.UNIVERSE_REFRESH_HOURS, 0.25) * 3600
+        while self.running:
+            age = self._universe_age_sec()
+            if age is not None and age < ttl:
+                time.sleep(min(ttl - age, 600))
+                continue
+            self.refresh_universe()
+            time.sleep(60)
+
+    def _candle_window_open(self):
+        """True once per hour, a few seconds after the hourly candle closes.
+
+        Candle requests are the expensive part: 25 symbols polled every five
+        seconds would be ~18k candleSnapshot calls an hour against a ~1.2k/h
+        budget. The signal only ever changes on a candle close, so the scan
+        runs once an hour and prices keep streaming in the meantime.
+        """
+        bucket = int(time.time() // 3600)
+        if bucket == self.last_hour_bucket:
+            return False
+        if time.time() % 3600 < 5:
+            return False
+        self.last_hour_bucket = bucket
+        return True
+
+    def _scan_candles(self, ctxs):
+        now_ms = int(time.time() * 1000)
+        for sym in list(self.active_symbols):
+            if sym not in self.last_prices:
+                continue
+            candles = self.client.candles(sym, config.TIMEFRAME,
+                                          now_ms - 2 * 3600 * 1000, now_ms)
+            if len(candles) < 2:
+                continue
+            closed_ts = candles[-2]["t"]
+            if self.last_candle_ts.get(sym) == closed_ts:
+                continue
+            self.last_candle_ts[sym] = closed_ts
+            self.analyze_symbol(sym, ctxs)
 
     def _state_snapshot(self):
         return {
@@ -96,6 +172,7 @@ class Bot:
             "day_start_equity": self.day_start_equity,
             "started": self.status.get("started", time.time()),
             "restarts": self.restarts,
+            "active_symbols": list(self.active_symbols),
             "sniper": {
                 "execution_history": list(self.sniper.execution_history),
                 "rejected": self.sniper.rejected,
@@ -141,6 +218,9 @@ class Bot:
         sniper = data.get("sniper") or {}
         self.sniper.execution_history = list(sniper.get("execution_history") or [])
         self.sniper.rejected = int(sniper.get("rejected", 0))
+        stored_symbols = data.get("active_symbols")
+        if stored_symbols and not universe.load():
+            self.active_symbols = list(stored_symbols)
         self.status["started"] = float(data.get("started", self.status["started"]))
         self.restarts = int(data.get("restarts", 0)) + 1
         self._event("bot v1.2 resumed from %s: trades=%d equity=%s open=%d" % (
@@ -215,7 +295,7 @@ class Bot:
         return fees + slippage + adverse
 
     def position_size(self, entry, stop, conv_score, regime, funding_hourly=0.0,
-                      direction="long"):
+                      direction="long", symbol=None):
         risk_pct = self.kelly_risk()
         risk_pct *= config.REGIME_SIZE_MULT.get(regime, 1.0)
         dd = (self.peak - self.equity) / self.peak
@@ -225,6 +305,16 @@ class Bot:
             risk_pct *= config.DD_BREAKER_5_PCT
         if conv_score >= config.CONVERGENCE_THRESHOLD_STRONG:
             risk_pct *= config.SNIPER_SIZE_MULT
+        # A coin's noise class caps how much it may ever risk and how much
+        # leverage it may use, so a noisy coin never out-risks a calm one.
+        info = (self.universe.get(symbol) or {}) if symbol else {}
+        cap = info.get("risk_pct_cap")
+        if cap:
+            risk_pct = min(risk_pct, float(cap) / 100.0)
+        leverage = config.LEVERAGE
+        class_lev = info.get("class_max_leverage")
+        if class_lev:
+            leverage = min(leverage, float(class_lev))
         stop_dist = abs(entry - stop)
         if stop_dist <= 0:
             return 0.0
@@ -234,7 +324,7 @@ class Bot:
         if denom <= 0:
             return 0.0
         size = (self.equity * risk_pct) / denom
-        max_notional = self.equity * config.MAX_MARGIN_UTILIZATION * config.LEVERAGE
+        max_notional = self.equity * config.MAX_MARGIN_UTILIZATION * leverage
         if size * entry > max_notional:
             size = max_notional / entry
         if size * entry < config.MIN_NOTIONAL:
@@ -256,7 +346,8 @@ class Bot:
         target = entry + config.ATR_TARGET_MULT * atr_val if direction == "long" else entry - config.ATR_TARGET_MULT * atr_val
         risk_dist = abs(entry - stop)
         regime = "normal"
-        size = self.position_size(entry, stop, conv["score"], regime, funding_hourly, direction)
+        size = self.position_size(entry, stop, conv["score"], regime, funding_hourly,
+                                  direction, symbol)
         if size <= 0:
             return False
         open_risk = sum(p.risk_dist * p.size for p in self.positions.values())
@@ -363,6 +454,9 @@ class Bot:
         return "normal"
 
     def analyze_symbol(self, symbol, ctxs):
+        info = self.universe.get(symbol)
+        if info is not None and not info.get("tradable", True):
+            return
         if time.time() < self.cooldowns.get(symbol, 0):
             return
         now_ms = int(time.time() * 1000)
@@ -424,7 +518,8 @@ class Bot:
                 symbol, 100 * target_dist / last_close, 100 * costs,
                 config.MIN_RR_AFTER_COSTS))
             return
-        size = self.position_size(last_close, stop, conv["score"], regime, funding_hourly, direction)
+        size = self.position_size(last_close, stop, conv["score"], regime,
+                                  funding_hourly, direction, symbol)
         if size <= 0:
             return
         result = self.sniper.execute_snipe(symbol, direction, size, conv)
@@ -471,7 +566,13 @@ class Bot:
             "avg_r": round(self.r_sum / len(self.trades), 2) if self.trades else 0.0,
             "positions_open": len(self.positions),
             "halted": self.halted, "day_halt": self.day_halt,
-            "symbols": config.SYMBOLS, "prices": self.last_prices,
+            "symbols": list(self.active_symbols), "prices": self.last_prices,
+            "universe": {
+                "size": len(self.active_symbols),
+                "enabled": config.UNIVERSE_ENABLED,
+                "classes": {c: (self.universe.get(c) or {}).get("noise_class")
+                            for c in self.active_symbols},
+            },
             "sniper_stats": self.sniper.get_stats(),
             "equity_history": list(self.equity_history),
             "trades": list(reversed(self.trades[-30:])),
@@ -504,27 +605,18 @@ class Bot:
         self.running = True
         self.status["status"] = "running"
         threading.Thread(target=start_health_server, kwargs={"port": config.PORT}, daemon=True).start()
+        threading.Thread(target=self._universe_loop, daemon=True).start()
         self._event("bot v1.1 started, polling every %ds" % config.PRICE_POLL_SEC)
         send_telegram("HL sniper bot v1.1 started mode=%s capital=%s" % (self.mode, money(self.capital)))
         while self.running:
             try:
                 mids = self.client.all_mids()
-                for sym in config.SYMBOLS:
+                for sym in self.active_symbols:
                     if sym in mids:
                         self.last_prices[sym] = mids[sym]
                 self.manage_positions()
-                ctxs = self.client.meta_and_ctxs()
-                for sym in config.SYMBOLS:
-                    if sym not in self.last_prices:
-                        continue
-                    now_ms = int(time.time() * 1000)
-                    candles = self.client.candles(sym, config.TIMEFRAME, now_ms - 2 * 3600 * 1000, now_ms)
-                    if len(candles) < 2:
-                        continue
-                    closed_ts = candles[-2]["t"]
-                    if self.last_candle_ts.get(sym) != closed_ts:
-                        self.last_candle_ts[sym] = closed_ts
-                        self.analyze_symbol(sym, ctxs)
+                if self._candle_window_open():
+                    self._scan_candles(self.client.meta_and_ctxs())
                 self.update_status()
                 time.sleep(config.PRICE_POLL_SEC)
             except Exception as exc:

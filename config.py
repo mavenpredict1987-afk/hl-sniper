@@ -29,6 +29,47 @@ ENTRY_FEE_RATE = float(os.getenv("ENTRY_FEE_RATE", str(TAKER_FEE)))
 ASSUMED_HOLDING_HOURS = float(os.getenv("ASSUMED_HOLDING_HOURS", "12"))
 MIN_RR_AFTER_COSTS = float(os.getenv("MIN_RR_AFTER_COSTS", "1.5"))
 
+# Universe scanner. Trading three majors is the single biggest brake on this
+# bot: 50 hours produced three signals. The scanner ranks every Hyperliquid
+# perp by noise and liquidity and keeps the tradable ones. SYMBOLS above stays
+# as the fallback seed when no scan is available yet.
+UNIVERSE_ENABLED = os.getenv("UNIVERSE_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+UNIVERSE_SIZE = int(os.getenv("UNIVERSE_SIZE", "25"))
+UNIVERSE_REFRESH_HOURS = float(os.getenv("UNIVERSE_REFRESH_HOURS", "6"))
+UNIVERSE_BARS = int(os.getenv("UNIVERSE_BARS", "168"))
+UNIVERSE_DELAY_SEC = float(os.getenv("UNIVERSE_DELAY_SEC", "3.0"))
+UNIVERSE_MIN_VOLUME_USD = float(os.getenv("UNIVERSE_MIN_VOLUME_USD", "2000000"))
+UNIVERSE_MAX_SPREAD_BPS = float(os.getenv("UNIVERSE_MAX_SPREAD_BPS", "40"))
+
+# Noise score weights (0..100, higher = noisier), calibrated on the
+# Hyperliquid perp universe. Metric definitions live in universe.py.
+NOISE_SCORE_WEIGHTS = {
+    "atr": 25.0, "atr_ref": 4.0,
+    "wick": 20.0, "wick_ref": 6.0,
+    "er": 20.0,
+    "impact": 20.0, "impact_ref": 40.0,
+    "thin_vlm": 15.0, "vlm_floor": 500000.0,
+}
+
+# Class decisions. risk_pct_cap is a ceiling applied on top of Kelly, so a
+# noisy coin can never take more risk than a calm one. stop_atr_mult is
+# recorded here for the backtest that will decide it; this build still uses
+# the global ATR_STOP_MULT so the change stays measurable in isolation.
+NOISE_CLASSES = {
+    "calm":   {"max_score": 25, "risk_pct_cap": 1.5, "stop_atr_mult": 2.0,
+               "min_rr": 2.0, "max_leverage": 10, "holding_hours": 48,
+               "strategy": "trend_follow", "tradable": True},
+    "normal": {"max_score": 45, "risk_pct_cap": 1.0, "stop_atr_mult": 2.5,
+               "min_rr": 2.5, "max_leverage": 5, "holding_hours": 36,
+               "strategy": "trend_or_breakout", "tradable": True},
+    "noisy":  {"max_score": 70, "risk_pct_cap": 0.5, "stop_atr_mult": 3.5,
+               "min_rr": 3.0, "max_leverage": 3, "holding_hours": 24,
+               "strategy": "mean_reversion_wide", "tradable": True},
+    "toxic":  {"max_score": 999, "risk_pct_cap": 0.25, "stop_atr_mult": 4.0,
+               "min_rr": 4.0, "max_leverage": 1, "holding_hours": 12,
+               "strategy": "no_trade", "tradable": False},
+}
+
 BASE_RISK_PER_TRADE = 0.01
 MIN_RISK_PCT = 0.005
 MAX_RISK_PCT = 0.02

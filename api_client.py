@@ -2,6 +2,13 @@ import time
 import requests
 from config import HL_INFO_URL, API_TIMEOUT
 
+_INTERVAL_MS = {"1m": 60000, "5m": 300000, "15m": 900000, "1h": 3600000,
+                "4h": 14400000, "1d": 86400000}
+
+
+def interval_ms(interval):
+    return _INTERVAL_MS.get(interval, 3600000)
+
 
 class HLClient:
     def __init__(self):
@@ -47,6 +54,12 @@ class HLClient:
                 continue
         return out
 
+    def candles_recent(self, coin, interval="1h", n_bars=168):
+        """The last n_bars of candles, oldest first."""
+        now_ms = int(time.time() * 1000)
+        start_ms = now_ms - interval_ms(interval) * n_bars
+        return self.candles(coin, interval, start_ms, now_ms)
+
     def l2_book(self, coin, depth: int = 10):
         """Returns top-of-book levels as (px, sz) lists plus mid prices."""
         data = self._post({"type": "l2Book", "coin": coin})
@@ -85,6 +98,7 @@ class HLClient:
                     "premium": float(ctxs[i].get("premium", 0)),
                     "day_volume_usd": float(ctxs[i].get("dayNtlVlm", 0)),
                     "open_interest": float(ctxs[i].get("openInterest", 0)),
+                    "impact_pxs": ctxs[i].get("impactPxs"),
                     "max_leverage": float(asset.get("maxLeverage", 5)),
                     "sz_decimals": int(asset.get("szDecimals", 3))}
             except (TypeError, ValueError):
