@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config
 from api_client import HLClient
-from indicators import ema, sma, atr, adx
+from indicators import ema, sma, atr, adx, atr_series
 from levels import find_levels, breakout_confirmed
 from sniper import (SniperModule, generate_trend_signal, generate_volume_signal,
                     generate_orderbook_signal, generate_funding_signal)
@@ -483,9 +483,7 @@ class Bot:
         a = atr(highs, lows, closes)
         if a <= 0:
             return
-        atrs = []
-        for i in range(30, len(candles)):
-            atrs.append(atr(highs[:i], lows[:i], closes[:i]))
+        atrs = atr_series(highs, lows, closes, from_len=30)
         atr_slow = sma(atrs, 50)
         regime = self.regime_of(a, atr_slow)
         e_fast = ema(closes[-60:], 20)

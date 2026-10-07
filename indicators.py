@@ -28,6 +28,34 @@ def atr(highs, lows, closes, period=14):
     return a
 
 
+def atr_series(highs, lows, closes, period=14, from_len=1):
+    """Wilder ATR for every prefix length from `from_len` to len(closes).
+
+    atr(highs[:k], lows[:k], closes[:k]) follows the same smoothing recursion
+    for every k, so the whole family costs one pass instead of one pass per
+    prefix (which is O(n^2) and dominates a backtest). Values are identical to
+    calling atr() on each prefix - see the equality check in the tests.
+    """
+    n = len(closes)
+    if n < period + 1:
+        return []
+    trs = []
+    for i in range(1, n):
+        h, l, pc = highs[i], lows[i], closes[i - 1]
+        trs.append(max(h - l, abs(h - pc), abs(l - pc)))
+    out = []
+    a = 0.0
+    for k in range(period + 1, n + 1):
+        m = k - 1
+        if m == period:
+            a = sum(trs[:period])
+        else:
+            a = (a * (period - 1) + trs[m - 1]) / period
+        if k >= from_len:
+            out.append(a)
+    return out
+
+
 def adx(highs, lows, closes, period=14):
     if len(closes) < period * 2 + 1:
         return 0.0

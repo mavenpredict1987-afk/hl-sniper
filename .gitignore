@@ -3,3 +3,6 @@ __pycache__/
 .devlibs/
 _capture/
 state/
+bt_cache/
+bt_*.log
+bt_results.json
