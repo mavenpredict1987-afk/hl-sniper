@@ -82,6 +82,17 @@ check("4.8xATR target clears costs",
       target_pct >= base * config.MIN_RR_AFTER_COSTS,
       "%.5f vs %.5f" % (target_pct, base * config.MIN_RR_AFTER_COSTS))
 
+# 6. live settings are exposed so they can be verified remotely
+bot.update_status()
+settings = bot.status.get("settings") or {}
+check("status exposes convergence",
+      settings.get("convergence") == config.CONVERGENCE_THRESHOLD,
+      settings.get("convergence"))
+check("status exposes book age",
+      settings.get("book_max_age_sec") == config.BOOK_MAX_AGE_SEC)
+check("status exposes the live cost model",
+      settings.get("cost_pct_base") == round(base, 6), settings.get("cost_pct_base"))
+
 print()
 if failures:
     print("FAILED:", ", ".join(failures))

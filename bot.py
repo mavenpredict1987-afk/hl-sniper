@@ -484,6 +484,18 @@ class Bot:
             "uptime_sec": round(time.time() - self.status.get("started", time.time()), 1),
             "state_path": state_store.state_path(),
             "restarts": self.restarts,
+            "settings": {
+                "convergence": config.CONVERGENCE_THRESHOLD,
+                "convergence_strong": config.CONVERGENCE_THRESHOLD_STRONG,
+                "atr_stop_mult": config.ATR_STOP_MULT,
+                "atr_target_mult": config.ATR_TARGET_MULT,
+                "book_max_age_sec": config.BOOK_MAX_AGE_SEC,
+                "cost_pct_base": round(self.cost_pct(0.0, "long"), 6),
+                "entry_fee_rate": config.ENTRY_FEE_RATE,
+                "holding_hours": config.ASSUMED_HOLDING_HOURS,
+                "min_rr_after_costs": config.MIN_RR_AFTER_COSTS,
+                "symbols": list(config.SYMBOLS),
+            },
             "events": list(reversed(self.events[-20:]))})
         HealthHandler.bot_status = self.status
         self._save_state()
