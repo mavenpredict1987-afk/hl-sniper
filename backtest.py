@@ -142,15 +142,17 @@ def fetch_all(coins, bars, funding_days, delay_candles, delay_funding, log=print
 
 
 def align_funding(candles, funding):
-    """One funding rate per candle, matched by hour with a one-hour tolerance."""
-    out = []
-    for bar in candles:
-        t = bar["t"]
-        rate = funding.get(t)
-        if rate is None:
-            rate = funding.get(t + 3600000, funding.get(t - 3600000, 0.0))
-        out.append(rate)
-    return out
+    """One funding rate per candle, bucketed to the hour.
+
+    The exchange stamps a funding record a few milliseconds after the hour
+    (1791338400083 against a candle at 1791338400000), so matching timestamps
+    exactly finds almost nothing - measured at 69 of 5000 bars, which silently
+    zeroed nearly all funding. Bucketing both sides to the hour fixes it.
+    """
+    by_hour = {}
+    for t, rate in funding.items():
+        by_hour[int(t) // 3600000] = rate
+    return [by_hour.get(int(bar["t"]) // 3600000, 0.0) for bar in candles]
 
 
 def load_cached(coins, log=print):
