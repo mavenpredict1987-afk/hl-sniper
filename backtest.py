@@ -141,6 +141,18 @@ def fetch_all(coins, bars, funding_days, delay_candles, delay_funding, log=print
         log("  %-10s %d bars, %d funding points" % (coin, len(candles), len(funding)))
 
 
+def align_funding(candles, funding):
+    """One funding rate per candle, matched by hour with a one-hour tolerance."""
+    out = []
+    for bar in candles:
+        t = bar["t"]
+        rate = funding.get(t)
+        if rate is None:
+            rate = funding.get(t + 3600000, funding.get(t - 3600000, 0.0))
+        out.append(rate)
+    return out
+
+
 def load_cached(coins, log=print):
     data = {}
     for coin in coins:
@@ -150,8 +162,9 @@ def load_cached(coins, log=print):
         with open(path, "r", encoding="utf-8") as fh:
             blob = json.load(fh)
         if blob.get("candles"):
-            data[coin] = {"candles": blob["candles"],
-                          "funding": {int(k): v for k, v in (blob.get("funding") or {}).items()}}
+            funding = {int(k): v for k, v in (blob.get("funding") or {}).items()}
+            data[coin] = {"candles": blob["candles"], "funding": funding,
+                          "funding_by_bar": align_funding(blob["candles"], funding)}
     log("  loaded %d coins from cache" % len(data))
     return data
 
@@ -237,13 +250,22 @@ class ReplayClient:
         return out
 
 
-def manage_bar(bot, coin, bar, clock):
-    """Intrabar stop/target/partial handling. Stops are assumed first."""
+def manage_bar(bot, coin, bar, clock, funding_rate=0.0):
+    """Intrabar funding, stop/target/partial handling. Stops are assumed first."""
     pos = bot.positions.get(coin)
     if not pos:
         return
     dist = pos.risk_dist
     long = pos.direction == "long"
+
+    # Hyperliquid charges funding every hour on the notional. Longs pay a
+    # positive rate, shorts pay a negative one. Leaving this out flatters the
+    # result: on the reference project funding was 89.5% of all costs.
+    notional = pos.size * bar["c"]
+    pay = notional * funding_rate if long else -notional * funding_rate
+    if pay:
+        bot.cash -= pay
+        bot.funding_paid += pay
 
     if long:
         if bar["l"] <= pos.stop:
@@ -314,6 +336,7 @@ def run_once(data, capital=10000.0, stop_mult=None, target_mult=None,
     engine.positions = {}
     engine.win_count = engine.loss_count = 0
     engine.win_sum = engine.loss_sum = engine.r_sum = 0.0
+    engine.funding_paid = 0.0
     engine._day_stamp = lambda: time.strftime("%Y-%m-%d", time.gmtime(clock.now))
     engine._save_state = lambda *a, **k: None
     engine._event = lambda msg: None
@@ -328,7 +351,9 @@ def run_once(data, capital=10000.0, stop_mult=None, target_mult=None,
         replay.cursor = i
         engine.last_prices = replay.all_mids()
         for coin, blob in data.items():
-            manage_bar(engine, coin, blob["candles"][i], clock)
+            rates = blob.get("funding_by_bar") or []
+            rate = rates[i] if i < len(rates) else 0.0
+            manage_bar(engine, coin, blob["candles"][i], clock, rate)
         ctxs = replay.meta_and_ctxs()
         for coin in engine.active_symbols:
             engine.analyze_symbol(coin, ctxs)
@@ -369,6 +394,8 @@ def summarize(engine, data, capital):
         "best_r": round(max(rs), 2) if rs else 0.0,
         "worst_r": round(min(rs), 2) if rs else 0.0,
         "exit_reasons": reasons,
+        "funding_paid": round(getattr(engine, "funding_paid", 0.0), 2),
+        "funding_pct_of_capital": round(getattr(engine, "funding_paid", 0.0) / capital * 100, 2),
         "days": round(span_days, 1),
         "trades_per_day": round(len(trades) / span_days, 2) if span_days else 0.0,
     }
@@ -395,12 +422,14 @@ def cmd_run(args):
         metrics["stop_mult"] = stop
         results.append(metrics)
         print("  %s  (%.0fs)" % (json.dumps(metrics["exit_reasons"]), time.time() - started))
-    print("\n%-8s %9s %7s %7s %7s %7s %7s %6s" % (
-        "stop", "equity", "return", "trades", "winrate", "avgR", "PF", "maxDD"))
+    print("\n%-6s %9s %8s %7s %8s %7s %6s %7s %8s %9s" % (
+        "stop", "equity", "return", "trades", "winrate", "avgR", "PF", "maxDD",
+        "funding", "fnd %cap"))
     for r in results:
-        print("%-8.2f %9.2f %6.1f%% %7d %6.1f%% %7.2f %7s %5.1f%%" % (
+        print("%-6.2f %9.2f %7.1f%% %7d %7.1f%% %7.2f %6s %6.1f%% %9.2f %8.1f%%" % (
             r["stop_mult"], r["final_equity"], r["return_pct"], r["trades"],
-            r["winrate"], r["avg_r"], r["profit_factor"], r["max_dd_pct"]))
+            r["winrate"], r["avg_r"], r["profit_factor"], r["max_dd_pct"],
+            r["funding_paid"], r["funding_pct_of_capital"]))
     if args.out:
         with open(args.out, "w", encoding="utf-8") as fh:
             json.dump(results, fh, indent=1)

@@ -33,6 +33,7 @@ class Position:
     initial_size: float = 0.0
     initial_risk_usd: float = 0.0
     partial_done: bool = False
+    realized_pnl: float = 0.0
     entry_time: float = field(default_factory=time.time)
 
 
@@ -384,18 +385,24 @@ class Bot:
         fee = pos.size * fill * config.TAKER_FEE
         net = pnl - fee
         self.cash += net
-        ret_pct = net / (pos.size * pos.entry)
-        if net > 0:
+        # Profit taken by an earlier partial belongs to this trade as well.
+        # Counting only the closing leg made profit factor contradict the
+        # equity curve: trades read as losing while the account was up.
+        total = net + pos.realized_pnl
+        base = (pos.initial_size or pos.size) * pos.entry
+        ret_pct = total / base if base > 0 else 0.0
+        if total > 0:
             self.win_count += 1
             self.win_sum += ret_pct
         else:
             self.loss_count += 1
             self.loss_sum += abs(ret_pct)
         risk_usd = pos.initial_risk_usd or (pos.risk_dist * pos.size)
-        r_mult = net / risk_usd if risk_usd > 0 else 0.0
+        r_mult = total / risk_usd if risk_usd > 0 else 0.0
         self.r_sum += r_mult
         self.trades.append({"symbol": symbol, "direction": pos.direction, "entry": pos.entry,
-                            "exit": fill, "pnl": net, "r": round(r_mult, 2),
+                            "exit": fill, "pnl": total, "r": round(r_mult, 2),
+                            "partial_pnl": round(pos.realized_pnl, 2),
                             "reason": reason, "time": time.time()})
         self._event("CLOSE %s @ %s pnl=%s (%s)" % (symbol, money(fill), money(net), reason))
         send_telegram("CLOSE %s pnl=%s (%s)" % (symbol, money(net), reason))
@@ -406,10 +413,12 @@ class Bot:
         fill = px * (1 - config.SLIPPAGE / 4) if pos.direction == "long" else px * (1 + config.SLIPPAGE / 4)
         pnl = (fill - pos.entry) * closed if pos.direction == "long" else (pos.entry - fill) * closed
         fee = closed * fill * config.TAKER_FEE
-        self.cash += pnl - fee
+        booked = pnl - fee
+        self.cash += booked
+        pos.realized_pnl += booked
         pos.size -= closed
         self._event("PARTIAL %s closed %.0f%% @ %s booked pnl=%s" % (
-            symbol, config.PARTIAL_RATIO * 100, money(fill), money(pnl - fee)))
+            symbol, config.PARTIAL_RATIO * 100, money(fill), money(booked)))
         self._save_state(force=True)
 
     def manage_positions(self):
