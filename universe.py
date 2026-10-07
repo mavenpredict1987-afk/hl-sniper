@@ -141,6 +141,8 @@ def scan(client, size=None, bars=None, delay=None, log=None):
         return [], []
     rows = []
     for coin, ctx in ctxs.items():
+        if ":" in coin or coin in config.UNIVERSE_EXCLUDE:
+            continue
         mark = float(ctx.get("mark") or 0)
         rows.append({
             "coin": coin,

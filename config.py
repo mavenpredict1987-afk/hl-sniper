@@ -41,6 +41,12 @@ UNIVERSE_DELAY_SEC = float(os.getenv("UNIVERSE_DELAY_SEC", "3.0"))
 UNIVERSE_MIN_VOLUME_USD = float(os.getenv("UNIVERSE_MIN_VOLUME_USD", "2000000"))
 UNIVERSE_MAX_SPREAD_BPS = float(os.getenv("UNIVERSE_MAX_SPREAD_BPS", "40"))
 
+# HIP-3 / builder-deployed perps (namespaced with a colon) and 1000x unit
+# tickers carry a different fee schedule than the 0.015/0.045% this cost model
+# assumes, so they are skipped rather than mispriced.
+UNIVERSE_EXCLUDE = [s.strip() for s in os.getenv(
+    "UNIVERSE_EXCLUDE", "kPEPE,kFLOKI,kNEIRO,2Z").split(",") if s.strip()]
+
 # Noise score weights (0..100, higher = noisier), calibrated on the
 # Hyperliquid perp universe. Metric definitions live in universe.py.
 NOISE_SCORE_WEIGHTS = {

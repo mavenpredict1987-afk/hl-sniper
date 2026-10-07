@@ -89,6 +89,10 @@ CTXS = {
              "funding": 0.0, "impact_pxs": ["0.99", "1.01"], "max_leverage": 5},
     "TINY": {"mark": 1.0, "day_volume_usd": 1000.0, "open_interest": 1.0,
              "funding": 0.0, "impact_pxs": None, "max_leverage": 3},
+    "kPEPE": {"mark": 0.01, "day_volume_usd": 1e8, "open_interest": 1e6,
+              "funding": 0.0, "impact_pxs": ["0.0099", "0.0101"], "max_leverage": 10},
+    "xyz:NVDA": {"mark": 100.0, "day_volume_usd": 1e8, "open_interest": 1e6,
+                 "funding": 0.0, "impact_pxs": ["99.9", "100.1"], "max_leverage": 10},
 }
 CNDLS = {"STEADY": steady, "CHOPPY": cold, "WILD": hot, "DEAD": []}
 
@@ -106,6 +110,8 @@ by_coin = {r["coin"]: r for r in pool}
 names = [r["coin"] for r in tradable]
 
 check("scan excluded the illiquid coin", "TINY" not in by_coin, list(by_coin))
+check("scan excluded the 1000x builder ticker", "kPEPE" not in by_coin, list(by_coin))
+check("scan excluded the HIP-3 namespaced market", "xyz:NVDA" not in by_coin, list(by_coin))
 check("dead ticker is not tradable", by_coin["DEAD"]["tradable"] is False)
 check("dead ticker is flagged", "no_candles" in by_coin["DEAD"]["flags"],
       by_coin["DEAD"]["flags"])
