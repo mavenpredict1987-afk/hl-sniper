@@ -146,6 +146,16 @@ check("cache survives a round trip", loaded is not None and len(loaded) == len(t
       None if loaded is None else len(loaded))
 check("cache keeps names", [r["coin"] for r in loaded] == names)
 
+# A cache written by an older scanner must be treated as stale, otherwise a
+# rule change would not take effect for up to UNIVERSE_REFRESH_HOURS.
+import state_store  # noqa: E402
+state_store.save({"kind": "universe", "scanner_version": 999,
+                  "scanned_at": 0, "universe": [{"coin": "OLD"}]},
+                 path=universe.cache_path())
+check("cache from an older scanner is rejected", universe.load() is None)
+check("seed is used until a fresh scan lands",
+      [r["coin"] for r in universe.load_or_seed()] == list(config.SYMBOLS))
+
 print()
 if failures:
     print("FAILED:", ", ".join(failures))

@@ -24,6 +24,11 @@ import time
 import config
 import state_store
 
+# Bump when the scanner's rules change, so an existing cache is treated as
+# stale and the next start rescans instead of serving results from the old
+# logic for up to UNIVERSE_REFRESH_HOURS.
+SCANNER_VERSION = 2
+
 
 def atr_pct(candles, period=14):
     """ATR(period) as a percentage of the last close."""
@@ -106,7 +111,8 @@ def cache_path():
 
 
 def save(rows, path=None):
-    return state_store.save({"kind": "universe", "scanned_at": time.time(),
+    return state_store.save({"kind": "universe", "scanner_version": SCANNER_VERSION,
+                             "scanned_at": time.time(),
                              "count": len(rows), "universe": list(rows)},
                             path=path or cache_path())
 
@@ -114,6 +120,8 @@ def save(rows, path=None):
 def load(path=None):
     data, _ = state_store.load(path=path or cache_path())
     if not data or data.get("kind") != "universe":
+        return None
+    if data.get("scanner_version") != SCANNER_VERSION:
         return None
     rows = data.get("universe")
     return rows if isinstance(rows, list) and rows else None

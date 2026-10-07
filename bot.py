@@ -85,7 +85,9 @@ class Bot:
 
     def _universe_age_sec(self):
         data, _ = state_store.load(path=universe.cache_path())
-        if not data:
+        if not data or data.get("kind") != "universe":
+            return None
+        if data.get("scanner_version") != universe.SCANNER_VERSION:
             return None
         return time.time() - float(data.get("scanned_at") or 0)
 
