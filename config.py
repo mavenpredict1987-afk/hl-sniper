@@ -21,6 +21,14 @@ TAKER_FEE = 0.00045
 MAKER_FEE = 0.00015
 SLIPPAGE = 0.0005
 
+# Cost model: every trade must pay fees, slippage and funding out of its own
+# risk budget, otherwise real risk per trade silently exceeds risk_pct.
+# A snipe with a target that cannot clear these costs several times over is
+# not worth taking regardless of how good the signal looks.
+ENTRY_FEE_RATE = float(os.getenv("ENTRY_FEE_RATE", str(TAKER_FEE)))
+ASSUMED_HOLDING_HOURS = float(os.getenv("ASSUMED_HOLDING_HOURS", "12"))
+MIN_RR_AFTER_COSTS = float(os.getenv("MIN_RR_AFTER_COSTS", "1.5"))
+
 BASE_RISK_PER_TRADE = 0.01
 MIN_RISK_PCT = 0.005
 MAX_RISK_PCT = 0.02
@@ -34,8 +42,11 @@ DD_BREAKER_10_PCT = 0.25
 HALT_DD_PCT = 0.15
 DAILY_STOP_PCT = 0.10
 
-CONVERGENCE_THRESHOLD = 0.60
-CONVERGENCE_THRESHOLD_STRONG = 0.75
+# Thresholds matched to the shipped spec of a bot that actually trades
+# (0.55 / 0.70). The previous 0.60 / 0.75 were stricter than that bot, which
+# is a large part of why this one almost never fires.
+CONVERGENCE_THRESHOLD = float(os.getenv("CONVERGENCE_THRESHOLD", "0.55"))
+CONVERGENCE_THRESHOLD_STRONG = float(os.getenv("CONVERGENCE_THRESHOLD_STRONG", "0.70"))
 MIN_SIGNALS = 2
 SNIPER_SIZE_MULT = 1.3
 SIGNAL_TTL_SEC = 3600
@@ -57,7 +68,9 @@ REGIME_SIZE_MULT = {"low": 1.2, "normal": 1.0, "high": 0.5}
 SPREAD_MAX_PCT = 0.10
 SLIPPAGE_MAX_PCT = 0.50
 LIQUIDITY_MIN_USD = 5000.0
-BOOK_MAX_AGE_SEC = 120
+# A book older than a couple of seconds is stale: the live bot this spec came
+# from refuses to snipe on anything older than 2s. 120s was ~60x too loose.
+BOOK_MAX_AGE_SEC = int(os.getenv("BOOK_MAX_AGE_SEC", "3"))
 SLIPPAGE_LIMIT_EXEC = 0.15
 SLIPPAGE_MARKET_EXEC = 0.30
 

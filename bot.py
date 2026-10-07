@@ -197,7 +197,25 @@ class Bot:
             risk += p.risk_dist * p.size
         return risk
 
-    def position_size(self, entry, stop, conv_score, regime):
+    def cost_pct(self, funding_hourly=0.0, direction="long", hours=None):
+        """Round-trip cost as a fraction of notional: fees + slippage + funding.
+
+        This build crosses the book on both legs, so fees and slippage are
+        charged twice. Hyperliquid funding is HOURLY and is only counted when
+        it works against the position.
+        """
+        held = config.ASSUMED_HOLDING_HOURS if hours is None else hours
+        fees = config.ENTRY_FEE_RATE + config.TAKER_FEE
+        slippage = 2.0 * (config.SLIPPAGE / 4.0)
+        adverse = 0.0
+        if direction == "long" and funding_hourly > 0:
+            adverse = funding_hourly * held
+        elif direction == "short" and funding_hourly < 0:
+            adverse = -funding_hourly * held
+        return fees + slippage + adverse
+
+    def position_size(self, entry, stop, conv_score, regime, funding_hourly=0.0,
+                      direction="long"):
         risk_pct = self.kelly_risk()
         risk_pct *= config.REGIME_SIZE_MULT.get(regime, 1.0)
         dd = (self.peak - self.equity) / self.peak
@@ -210,7 +228,12 @@ class Bot:
         stop_dist = abs(entry - stop)
         if stop_dist <= 0:
             return 0.0
-        size = (self.equity * risk_pct) / stop_dist
+        # Costs are paid out of the same risk budget as the stop distance.
+        # Ignoring them made the real risk per trade exceed risk_pct.
+        denom = stop_dist + entry * self.cost_pct(funding_hourly, direction)
+        if denom <= 0:
+            return 0.0
+        size = (self.equity * risk_pct) / denom
         max_notional = self.equity * config.MAX_MARGIN_UTILIZATION * config.LEVERAGE
         if size * entry > max_notional:
             size = max_notional / entry
@@ -218,7 +241,8 @@ class Bot:
             return 0.0
         return size
 
-    def open_position(self, symbol, direction, entry, atr_val, conv, book_slippage_pct):
+    def open_position(self, symbol, direction, entry, atr_val, conv, book_slippage_pct,
+                      funding_hourly=0.0):
         if self.halted or self.day_halt:
             return False
         if len(self.positions) >= config.MAX_POSITIONS:
@@ -232,7 +256,7 @@ class Bot:
         target = entry + config.ATR_TARGET_MULT * atr_val if direction == "long" else entry - config.ATR_TARGET_MULT * atr_val
         risk_dist = abs(entry - stop)
         regime = "normal"
-        size = self.position_size(entry, stop, conv["score"], regime)
+        size = self.position_size(entry, stop, conv["score"], regime, funding_hourly, direction)
         if size <= 0:
             return False
         open_risk = sum(p.risk_dist * p.size for p in self.positions.values())
@@ -393,7 +417,14 @@ class Bot:
         if target_dist / last_close < config.MIN_TARGET_PCT:
             self._event("skip %s: target %.2f%% below viability floor" % (symbol, 100 * target_dist / last_close))
             return
-        size = self.position_size(last_close, stop, conv["score"], regime)
+        funding_hourly = ctx.get("funding", 0.0) or 0.0
+        costs = self.cost_pct(funding_hourly, direction)
+        if target_dist / last_close < costs * config.MIN_RR_AFTER_COSTS:
+            self._event("skip %s: reward %.2f%% vs costs %.2f%% x%.1f" % (
+                symbol, 100 * target_dist / last_close, 100 * costs,
+                config.MIN_RR_AFTER_COSTS))
+            return
+        size = self.position_size(last_close, stop, conv["score"], regime, funding_hourly, direction)
         if size <= 0:
             return
         result = self.sniper.execute_snipe(symbol, direction, size, conv)
@@ -401,7 +432,7 @@ class Bot:
             self._event("SNIPER REJECT %s: %s" % (symbol, result.get("reason", "?")))
             return
         slip_pct = result["decision"]["slippage_pct"]
-        self.open_position(symbol, direction, last_close, a, conv, slip_pct)
+        self.open_position(symbol, direction, last_close, a, conv, slip_pct, funding_hourly)
 
     def check_halts(self):
         dd = (self.peak - self.equity) / self.peak
