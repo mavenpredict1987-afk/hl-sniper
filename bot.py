@@ -59,6 +59,8 @@ class Bot:
         self.last_prices = {}
         self.last_candle_ts = {}
         self.cooldowns = {}
+        self.consec_losses = 0
+        self.loss_pause_until = 0.0
         self.r_sum = 0.0
         self.equity_history = []
         self.client = HLClient()
@@ -265,7 +267,12 @@ class Bot:
         al = self.loss_sum / self.loss_count if self.loss_count else 0.01
         if al <= 0:
             return config.BASE_RISK_PER_TRADE
-        k = max(0.05, min(wr - (1 - wr) / (aw / al), 0.06))
+        k = min(wr - (1 - wr) / (aw / al), 0.06)
+        # No floor. The old max(0.05, ...) pinned the risk at a constant 1.25%
+        # whatever the estimate said, so the bot never de-risked while losing.
+        # Kelly exists to shrink, or stop, when the measured edge is negative.
+        if k <= 0:
+            return config.MIN_RISK_PCT * config.KELLY_NEGATIVE_MULT
         return max(config.MIN_RISK_PCT, min(k * config.KELLY_FRACTION, config.MAX_RISK_PCT))
 
     def cluster_of(self, symbol):
@@ -316,6 +323,8 @@ class Bot:
         cap = info.get("risk_pct_cap")
         if cap:
             risk_pct = min(risk_pct, float(cap) / 100.0)
+        if symbol and symbol in config.WHITELIST:
+            risk_pct *= config.WHITELIST_SIZE_BONUS
         leverage = config.LEVERAGE
         class_lev = info.get("class_max_leverage")
         if class_lev:
@@ -379,6 +388,9 @@ class Bot:
         pos = self.positions.pop(symbol, None)
         if not pos:
             return
+        # Drop this coin's signals so a stale set cannot trigger an instant
+        # re-entry on the very next scan.
+        self.sniper.convergence.signals.pop(symbol, None)
         slip = config.SLIPPAGE / 4
         fill = price * (1 - slip) if pos.direction == "long" else price * (1 + slip)
         pnl = (fill - pos.entry) * pos.size if pos.direction == "long" else (pos.entry - fill) * pos.size
@@ -394,9 +406,17 @@ class Bot:
         if total > 0:
             self.win_count += 1
             self.win_sum += ret_pct
+            self.consec_losses = 0
         else:
             self.loss_count += 1
             self.loss_sum += abs(ret_pct)
+            self.consec_losses += 1
+            if (config.CONSEC_LOSS_PAUSE > 0
+                    and self.consec_losses >= config.CONSEC_LOSS_PAUSE):
+                self.loss_pause_until = time.time() + config.CONSEC_LOSS_PAUSE_SEC
+                self._event("PAUSE: %d losses in a row, entries blocked for %.1fh" % (
+                    self.consec_losses, config.CONSEC_LOSS_PAUSE_SEC / 3600.0))
+                send_telegram("PAUSE: %d losses in a row - new entries blocked" % self.consec_losses)
         risk_usd = pos.initial_risk_usd or (pos.risk_dist * pos.size)
         r_mult = total / risk_usd if risk_usd > 0 else 0.0
         self.r_sum += r_mult
@@ -439,8 +459,13 @@ class Bot:
                 if not pos.partial_done and px >= pos.entry + config.PARTIAL_AT_R * r:
                     self.book_partial(pos, symbol, px)
                     pos.stop, pos.partial_done = pos.entry, True
-                if pos.partial_done and px > pos.entry + (config.PARTIAL_AT_R + 1.0) * r:
-                    pos.stop = max(pos.stop, pos.entry + 0.5 * r)
+                if pos.partial_done:
+                    if config.ATR_TRAIL_MULT > 0:
+                        trail = px - pos.atr_at_entry * config.ATR_TRAIL_MULT
+                        if trail > pos.stop:
+                            pos.stop = trail
+                    elif px > pos.entry + (config.PARTIAL_AT_R + 1.0) * r:
+                        pos.stop = max(pos.stop, pos.entry + 0.5 * r)
                 if px >= pos.target:
                     self.close_position(symbol, px, "target")
             else:
@@ -451,8 +476,13 @@ class Bot:
                 if not pos.partial_done and px <= pos.entry - config.PARTIAL_AT_R * r:
                     self.book_partial(pos, symbol, px)
                     pos.stop, pos.partial_done = pos.entry, True
-                if pos.partial_done and px < pos.entry - (config.PARTIAL_AT_R + 1.0) * r:
-                    pos.stop = min(pos.stop, pos.entry - 0.5 * r)
+                if pos.partial_done:
+                    if config.ATR_TRAIL_MULT > 0:
+                        trail = px + pos.atr_at_entry * config.ATR_TRAIL_MULT
+                        if trail < pos.stop:
+                            pos.stop = trail
+                    elif px < pos.entry - (config.PARTIAL_AT_R + 1.0) * r:
+                        pos.stop = min(pos.stop, pos.entry - 0.5 * r)
                 if px <= pos.target:
                     self.close_position(symbol, px, "target")
 
@@ -467,10 +497,14 @@ class Bot:
         return "normal"
 
     def analyze_symbol(self, symbol, ctxs):
+        if symbol in config.BLACKLIST:
+            return
         info = self.universe.get(symbol)
         if info is not None and not info.get("tradable", True):
             return
         if time.time() < self.cooldowns.get(symbol, 0):
+            return
+        if time.time() < self.loss_pause_until:
             return
         now_ms = int(time.time() * 1000)
         start_ms = now_ms - config.CANDLE_COUNT * 3600 * 1000
@@ -516,6 +550,18 @@ class Bot:
         self.sniper.convergence.add_signal(symbol, generate_funding_signal(direction, ctx.get("funding", 0.0)))
         conv = self.sniper.convergence.evaluate(symbol)
         if not conv or conv["direction"] != direction:
+            return
+        if conv["direction"] == "short" and not config.SHORTS_ENABLED:
+            self._event("skip %s: shorts disabled" % symbol)
+            return
+        # A high-volatility regime must clear a higher bar, not merely take a
+        # smaller position. Whitelisted coins get a small discount.
+        threshold = config.CONVERGENCE_THRESHOLD * config.REGIME_FILTER_MULT.get(regime, 1.0)
+        if symbol in config.WHITELIST:
+            threshold -= config.WHITELIST_SCORE_BONUS
+        if conv["score"] < threshold:
+            self._event("skip %s: score %.2f below regime bar %.2f (%s)" % (
+                symbol, conv["score"], threshold, regime))
             return
         stop = last_close - config.ATR_STOP_MULT * a if direction == "long" else last_close + config.ATR_STOP_MULT * a
         target_dist = config.ATR_TARGET_MULT * a
@@ -607,7 +653,21 @@ class Bot:
                 "holding_hours": config.ASSUMED_HOLDING_HOURS,
                 "min_rr_after_costs": config.MIN_RR_AFTER_COSTS,
                 "symbols": list(config.SYMBOLS),
+                "shorts_enabled": config.SHORTS_ENABLED,
+                "atr_trail_mult": config.ATR_TRAIL_MULT,
+                "partial_ratio": config.PARTIAL_RATIO,
+                "partial_at_r": config.PARTIAL_AT_R,
+                "kelly_fraction": config.KELLY_FRACTION,
+                "kelly_negative_mult": config.KELLY_NEGATIVE_MULT,
+                "consec_loss_pause": config.CONSEC_LOSS_PAUSE,
+                "daily_stop_pct": config.DAILY_STOP_PCT,
+                "price_poll_sec": config.PRICE_POLL_SEC,
+                "blacklist": sorted(config.BLACKLIST),
+                "whitelist": sorted(config.WHITELIST),
+                "clusters": len(config.CLUSTERS),
             },
+            "consec_losses": self.consec_losses,
+            "loss_pause_until": self.loss_pause_until,
             "events": list(reversed(self.events[-20:]))})
         HealthHandler.bot_status = self.status
         self._save_state()

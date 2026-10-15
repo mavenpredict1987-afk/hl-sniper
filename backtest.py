@@ -303,7 +303,8 @@ def snapshot_equity(bot, clock):
 
 
 def run_once(data, capital=10000.0, stop_mult=None, target_mult=None,
-             threshold=None, strong=None, fee_taker=None, log=None):
+             threshold=None, strong=None, fee_taker=None, shorts=None,
+             trail=None, partial=None, log=None):
     """Replay the whole history once. Returns a metrics dict."""
     import bot as bot_module
     import config as config_module
@@ -319,6 +320,12 @@ def run_once(data, capital=10000.0, stop_mult=None, target_mult=None,
         config_module.CONVERGENCE_THRESHOLD_STRONG = strong
     if fee_taker is not None:
         config_module.TAKER_FEE = fee_taker
+    if shorts is not None:
+        config_module.SHORTS_ENABLED = bool(shorts)
+    if trail is not None:
+        config_module.ATR_TRAIL_MULT = float(trail)
+    if partial is not None:
+        config_module.PARTIAL_RATIO = float(partial)
 
     clock = SimClock()
     bot_module.time = clock
@@ -415,27 +422,60 @@ def cmd_run(args):
     if not data:
         raise SystemExit("no cached data; run: backtest.py fetch --coins ...")
     stops = [float(s) for s in args.stops.split(",")]
+    shorts_opts = [s.strip().lower() in ("1", "true", "yes", "on")
+                   for s in args.shorts.split(",")]
+    trail_opts = [float(s) for s in args.trail.split(",")]
+    partial_opts = [float(s) for s in args.partial.split(",")]
+    variants = [{"stop": st, "shorts": sh, "trail": tr, "partial": pa}
+                for st in stops for sh in shorts_opts
+                for tr in trail_opts for pa in partial_opts]
+
+    def label(v):
+        return "stop=%.2f|shorts=%d|trail=%.2f|partial=%.2f" % (
+            v["stop"], int(v["shorts"]), v["trail"], v["partial"])
+
+    # Checkpoint after every variant and resume from the file. A matrix of
+    # configurations takes many minutes, and a run that dies with the phone
+    # should not throw away the configurations it already finished.
     results = []
-    for stop in stops:
-        print("\n=== stop %.2f x ATR ===" % stop)
+    if args.out and os.path.exists(args.out):
+        try:
+            with open(args.out, "r", encoding="utf-8") as fh:
+                results = json.load(fh)
+            done = {r.get("variant") for r in results}
+            if done:
+                print("resuming: %d variant(s) already computed" % len(done))
+            variants = [v for v in variants if label(v) not in done]
+        except (OSError, ValueError):
+            results = []
+    if not variants:
+        print("nothing left to run")
+
+    for v in variants:
+        print("\n=== %s ===" % label(v))
         started = time.time()
-        metrics = run_once(data, capital=args.capital, stop_mult=stop,
-                           log=lambda m: print(m))
-        metrics["stop_mult"] = stop
+        metrics = run_once(data, capital=args.capital, stop_mult=v["stop"],
+                           shorts=v["shorts"], trail=v["trail"],
+                           partial=v["partial"], log=lambda m: print(m))
+        metrics.update(v)
+        metrics["variant"] = label(v)
         results.append(metrics)
         print("  %s  (%.0fs)" % (json.dumps(metrics["exit_reasons"]), time.time() - started))
-    print("\n%-6s %9s %8s %7s %8s %7s %6s %7s %8s %9s" % (
-        "stop", "equity", "return", "trades", "winrate", "avgR", "PF", "maxDD",
-        "funding", "fnd %cap"))
+        if args.out:
+            with open(args.out, "w", encoding="utf-8") as fh:
+                json.dump(results, fh, indent=1)
+            print("  checkpoint -> %s" % args.out)
+
+    if not results:
+        return
+    print("\n%-6s %-6s %-6s %-8s %10s %8s %7s %8s %7s %6s %7s %8s" % (
+        "stop", "shorts", "trail", "partial", "equity", "return", "trades",
+        "winrate", "avgR", "PF", "maxDD", "funding"))
     for r in results:
-        print("%-6.2f %9.2f %7.1f%% %7d %7.1f%% %7.2f %6s %6.1f%% %9.2f %8.1f%%" % (
-            r["stop_mult"], r["final_equity"], r["return_pct"], r["trades"],
-            r["winrate"], r["avg_r"], r["profit_factor"], r["max_dd_pct"],
-            r["funding_paid"], r["funding_pct_of_capital"]))
-    if args.out:
-        with open(args.out, "w", encoding="utf-8") as fh:
-            json.dump(results, fh, indent=1)
-        print("\nwritten to %s" % args.out)
+        print("%-6.2f %-6d %-6.2f %-8.2f %10.2f %7.1f%% %7d %7.1f%% %7.2f %6s %6.1f%% %8.2f" % (
+            r["stop"], int(r["shorts"]), r["trail"], r["partial"],
+            r["final_equity"], r["return_pct"], r["trades"], r["winrate"],
+            r["avg_r"], r["profit_factor"], r["max_dd_pct"], r["funding_paid"]))
 
 
 DEFAULT_COINS = "BTC,ETH,SOL,BNB,XRP,DOGE,ADA,AVAX,LINK,LTC,SUI,ARB"
@@ -456,6 +496,9 @@ def main():
     r = sub.add_parser("run", help="replay the cached history")
     r.add_argument("--coins", default=DEFAULT_COINS)
     r.add_argument("--stops", default="1.35,2.0,2.5,3.5")
+    r.add_argument("--shorts", default="1", help="comma list: 1/0")
+    r.add_argument("--trail", default="0", help="comma list of ATR trail multiples")
+    r.add_argument("--partial", default="0.5", help="comma list of partial close ratios")
     r.add_argument("--capital", type=float, default=10000.0)
     r.add_argument("--out")
     r.set_defaults(func=cmd_run)

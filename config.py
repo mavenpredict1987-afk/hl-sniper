@@ -12,7 +12,10 @@ STATE_SAVE_SEC = int(os.getenv("STATE_SAVE_SEC", "30"))
 
 HL_INFO_URL = os.getenv("HL_INFO_URL", "https://api.hyperliquid.xyz/info")
 API_TIMEOUT = 10
-PRICE_POLL_SEC = 5
+# Exits are checked once per poll, so this IS the exit latency. The reference
+# bot reacts to every WebSocket book update; a shorter poll is the cheap
+# improvement until that layer exists. allMids is a light endpoint.
+PRICE_POLL_SEC = float(os.getenv("PRICE_POLL_SEC", "2"))
 CTX_CACHE_SEC = 60
 CANDLE_COUNT = 300
 TIMEFRAME = "1h"
@@ -28,6 +31,36 @@ SLIPPAGE = 0.0005
 ENTRY_FEE_RATE = float(os.getenv("ENTRY_FEE_RATE", str(TAKER_FEE)))
 ASSUMED_HOLDING_HOURS = float(os.getenv("ASSUMED_HOLDING_HOURS", "12"))
 MIN_RR_AFTER_COSTS = float(os.getenv("MIN_RR_AFTER_COSTS", "1.5"))
+
+# --- Guards and exit management taken from the reference bot ---------------
+# Source values and rationale: research/REFERENCE_FRIEND_BOT.md
+
+# Shorts lost money in both bots: theirs 15 days at WR 0-22%, ours 19 trades at
+# WR 32% for -$84 against -$22 on longs. Kept switchable so the backtest can
+# compare both settings before the default is changed.
+SHORTS_ENABLED = os.getenv("SHORTS_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+
+# Continuous ATR trailing once a partial has been booked. 0 keeps the old
+# single ratchet to +0.5R, which let winners hand everything back.
+ATR_TRAIL_MULT = float(os.getenv("ATR_TRAIL_MULT", "0"))
+
+# What to risk when the measured Kelly edge is negative. 1.0 reproduces the old
+# behaviour (risk MIN_RISK_PCT anyway); 0 stops taking new positions.
+KELLY_NEGATIVE_MULT = float(os.getenv("KELLY_NEGATIVE_MULT", "1.0"))
+
+# Pause new entries after N consecutive losses (0 disables).
+CONSEC_LOSS_PAUSE = int(os.getenv("CONSEC_LOSS_PAUSE", "0"))
+CONSEC_LOSS_PAUSE_SEC = float(os.getenv("CONSEC_LOSS_PAUSE_SEC", str(4 * 3600)))
+
+# Raise the entry threshold when volatility is high, instead of only shrinking
+# the position.
+REGIME_FILTER_MULT = {"low": 1.0, "normal": 1.0, "high": 1.5}
+
+# Symbols benched by live statistics rather than by intuition.
+BLACKLIST = {s.strip() for s in os.getenv("BLACKLIST", "").split(",") if s.strip()}
+WHITELIST = {s.strip() for s in os.getenv("WHITELIST", "").split(",") if s.strip()}
+WHITELIST_SIZE_BONUS = float(os.getenv("WHITELIST_SIZE_BONUS", "1.0"))
+WHITELIST_SCORE_BONUS = float(os.getenv("WHITELIST_SCORE_BONUS", "0.0"))
 
 # Universe scanner. Trading three majors is the single biggest brake on this
 # bot: 50 hours produced three signals. The scanner ranks every Hyperliquid
@@ -87,7 +120,9 @@ LEVERAGE = 5
 DD_BREAKER_5_PCT = 0.5
 DD_BREAKER_10_PCT = 0.25
 HALT_DD_PCT = 0.15
-DAILY_STOP_PCT = 0.10
+# The reference bot uses 2.5%; ours is far looser. Env-configurable so the
+# difference can be measured before the default moves.
+DAILY_STOP_PCT = float(os.getenv("DAILY_STOP_PCT", "0.10"))
 
 # Thresholds matched to the shipped spec of a bot that actually trades
 # (0.55 / 0.70). The previous 0.60 / 0.75 were stricter than that bot, which
@@ -106,7 +141,9 @@ PREMIUM_MAX_PCT = 0.015
 ATR_STOP_MULT = 1.35
 ATR_TARGET_MULT = 4.8
 PARTIAL_AT_R = 2.0
-PARTIAL_RATIO = 0.5
+# The reference bot cut this from 50% to 30% deliberately: "fix the R:R
+# asymmetry - trim 30%, let the winner run".
+PARTIAL_RATIO = float(os.getenv("PARTIAL_RATIO", "0.5"))
 
 REGIME_LOW = 0.8
 REGIME_HIGH = 1.25
@@ -130,7 +167,15 @@ TIME_STOP_HOURS = 36.0
 COOLDOWN_AFTER_STOP_H = 6.0
 MIN_TARGET_PCT = 0.003
 
-CLUSTERS = {"majors": ["BTC", "ETH", "SOL"]}
+# Correlation clusters: five groups instead of one. Without them the bot can
+# hold three AI coins at once and never notice it is a single bet.
+CLUSTERS = {
+    "majors": ["BTC", "ETH", "SOL"],
+    "ai": ["RNDR", "TAO", "FET", "ARKM"],
+    "l2": ["ARB", "OP", "STRK", "MANTA"],
+    "depin": ["HNT", "IOT", "MOBILE"],
+    "rwa": ["ONDO", "CFG"],
+}
 MAX_CLUSTER_RISK_PCT = 0.03
 
 W_TREND = 0.35
