@@ -151,6 +151,27 @@ check("calm regimes are unchanged",
       config.REGIME_FILTER_MULT.get("normal") == 1.0
       and config.REGIME_FILTER_MULT.get("low") == 1.0)
 
+# --- 8. sniper stats keys and the bounded history window ------------------
+bot = fresh()
+sm = bot.sniper
+sm.update_order_book("BTC", [(100.0, 100.0)] * 10, [(100.1, 100.0)] * 10)
+conv = {"score": 0.60, "strength": "normal", "size_multiplier": 1.0}
+rounds = sm.HISTORY_MAX + 25
+for _ in range(rounds):
+    sm.execute_snipe("BTC", "long", 1.0, conv)
+check("every snipe is counted", sm.total_snipes == rounds, sm.total_snipes)
+check("the history window is bounded", len(sm.execution_history) == sm.HISTORY_MAX,
+      len(sm.execution_history))
+stats = sm.get_stats()
+for key in ("total_snipes", "rejected_snipes", "strong_snipes", "avg_slippage_bps"):
+    check("stats expose the dashboard key %s" % key, key in stats, sorted(stats))
+check("total_snipes is the counter, not the window",
+      stats["total_snipes"] == rounds, stats["total_snipes"])
+check("slippage is averaged into bps", stats["avg_slippage_bps"] > 0,
+      stats["avg_slippage_bps"])
+check("the old key names still work",
+      "rejected" in stats and "avg_slippage_pct" in stats)
+
 print()
 if failures:
     print("FAILED:", ", ".join(failures))

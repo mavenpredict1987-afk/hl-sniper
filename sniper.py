@@ -152,11 +152,21 @@ def generate_funding_signal(direction, funding_hourly):
 
 
 class SniperModule:
+    # The full decision log is kept only as a recent window: the whole history
+    # used to grow without bound and was re-serialised into state.json on every
+    # save. Aggregates are tracked as running counters instead, so the numbers
+    # stay exact however long the bot runs.
+    HISTORY_MAX = 200
+
     def __init__(self):
         self.convergence = ConvergenceEngine()
         self.order_books: Dict[str, OrderBookSnapshot] = {}
         self.execution_history: List[dict] = []
         self.rejected = 0
+        self.total_snipes = 0
+        self.strong_snipes = 0
+        self.slippage_sum = 0.0
+        self.slippage_n = 0
 
     def update_order_book(self, symbol, bids, asks):
         self.order_books[symbol] = OrderBookSnapshot(bids, asks)
@@ -206,14 +216,26 @@ class SniperModule:
                     "strength": convergence["strength"],
                     "execution": entry["execution"], "slippage_pct": entry["slippage_pct"]}
         self.execution_history.append(decision)
+        if len(self.execution_history) > self.HISTORY_MAX:
+            del self.execution_history[:-self.HISTORY_MAX]
+        self.total_snipes += 1
+        if decision["strength"] == "strong":
+            self.strong_snipes += 1
+        self.slippage_sum += entry["slippage_pct"]
+        self.slippage_n += 1
         return {"status": "executed", "decision": decision}
 
     def get_stats(self):
-        if not self.execution_history:
-            return {"total_snipes": 0, "rejected": self.rejected}
-        total = len(self.execution_history)
-        strong = sum(1 for e in self.execution_history if e["strength"] == "strong")
-        avg_slip = sum(e["slippage_pct"] for e in self.execution_history) / total
-        return {"total_snipes": total, "rejected": self.rejected,
-                "strong_pct": round(100.0 * strong / total, 1),
-                "avg_slippage_pct": round(avg_slip, 3)}
+        """Keys the dashboard panel reads, plus the older names for anyone else."""
+        avg_slip = self.slippage_sum / self.slippage_n if self.slippage_n else 0.0
+        return {
+            "total_snipes": self.total_snipes,
+            "rejected": self.rejected,
+            "rejected_snipes": self.rejected,
+            "strong_snipes": self.strong_snipes,
+            "strong_pct": round(100.0 * self.strong_snipes / self.total_snipes, 1)
+            if self.total_snipes else 0.0,
+            "avg_slippage_pct": round(avg_slip, 4),
+            "avg_slippage_bps": round(avg_slip * 100, 2),
+            "history_kept": len(self.execution_history),
+        }

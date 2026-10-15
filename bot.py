@@ -182,6 +182,10 @@ class Bot:
             "sniper": {
                 "execution_history": list(self.sniper.execution_history),
                 "rejected": self.sniper.rejected,
+                "total_snipes": self.sniper.total_snipes,
+                "strong_snipes": self.sniper.strong_snipes,
+                "slippage_sum": self.sniper.slippage_sum,
+                "slippage_n": self.sniper.slippage_n,
             },
         }
 
@@ -225,6 +229,13 @@ class Bot:
         sniper = data.get("sniper") or {}
         self.sniper.execution_history = list(sniper.get("execution_history") or [])
         self.sniper.rejected = int(sniper.get("rejected", 0))
+        # Older snapshots carried no counters; fall back to the window length.
+        self.sniper.total_snipes = int(sniper.get("total_snipes", len(self.sniper.execution_history)))
+        self.sniper.strong_snipes = int(sniper.get("strong_snipes", 0))
+        self.sniper.slippage_sum = float(sniper.get("slippage_sum", 0.0))
+        self.sniper.slippage_n = int(sniper.get("slippage_n", 0))
+        if len(self.sniper.execution_history) > self.sniper.HISTORY_MAX:
+            del self.sniper.execution_history[:-self.sniper.HISTORY_MAX]
         stored_symbols = data.get("active_symbols")
         if stored_symbols and not universe.load():
             self.active_symbols = list(stored_symbols)
