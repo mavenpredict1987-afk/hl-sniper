@@ -15,7 +15,7 @@ from levels import find_levels, breakout_confirmed
 from sniper import (SniperModule, generate_trend_signal, generate_volume_signal,
                     generate_orderbook_signal, generate_funding_signal)
 from health_server import start_health_server, HealthHandler
-from utils import setup_logging, send_telegram, money, logger
+from utils import setup_logging, send_telegram, money, price, logger
 import state_store
 import universe
 
@@ -296,12 +296,33 @@ class Bot:
                 return name
         return symbol
 
-    def cluster_risk(self, exclude=None):
+    def cluster_risk(self, symbol, exclude=None):
+        """Open risk held inside the same correlation cluster as `symbol`.
+
+        This used to sum every open position regardless of cluster, so the 3%
+        cluster cap was really a 3% cap on total risk - stricter than the 6%
+        MAX_TOTAL_RISK_PCT. With one cluster covering only BTC/ETH/SOL that was
+        mostly invisible; expanding the clusters to the whole universe silently
+        halved the trade count.
+        """
+        members = config.CLUSTERS.get(self.cluster_of(symbol), [symbol])
         risk = 0.0
         for sym, p in self.positions.items():
             if exclude and sym == exclude:
                 continue
-            risk += p.risk_dist * p.size
+            if sym in members:
+                risk += p.risk_dist * p.size
+        return risk
+
+    def direction_risk(self, direction, exclude=None):
+        """Open risk held in one direction. Crypto beta dominates everything
+        else, so this is what actually stops a pile-up of same-way positions."""
+        risk = 0.0
+        for sym, p in self.positions.items():
+            if exclude and sym == exclude:
+                continue
+            if p.direction == direction:
+                risk += p.risk_dist * p.size
         return risk
 
     def cost_pct(self, funding_hourly=0.0, direction="long", hours=None):
@@ -382,7 +403,19 @@ class Bot:
         open_risk = sum(p.risk_dist * p.size for p in self.positions.values())
         if open_risk + risk_dist * size > self.equity * config.MAX_TOTAL_RISK_PCT:
             return False
-        if self.cluster_risk() + risk_dist * size > self.equity * config.MAX_CLUSTER_RISK_PCT and self.cluster_of(symbol) in config.CLUSTERS:
+        if self.cluster_of(symbol) in config.CLUSTERS:
+            if (self.cluster_risk(symbol) + risk_dist * size
+                    > self.equity * config.MAX_CLUSTER_RISK_PCT):
+                self._event("skip %s: %s cluster risk would exceed %.1f%%" % (
+                    symbol, self.cluster_of(symbol), 100 * config.MAX_CLUSTER_RISK_PCT))
+                return False
+        # One direction at a time. Three shorts opened inside twelve seconds and
+        # all three stopped out together; this is the check that stops the
+        # second and third from being taken at all.
+        if (self.direction_risk(direction) + risk_dist * size
+                > self.equity * config.MAX_DIRECTION_RISK_PCT):
+            self._event("skip %s: %s risk would exceed the %.1f%% directional cap" % (
+                symbol, direction, 100 * config.MAX_DIRECTION_RISK_PCT))
             return False
         slip = max(book_slippage_pct / 100.0, config.SLIPPAGE / 4)
         fill = entry * (1 + slip) if direction == "long" else entry * (1 - slip)
@@ -393,7 +426,7 @@ class Bot:
         pos.initial_risk_usd = risk_dist * size
         self.positions[symbol] = pos
         self._event("OPEN %s %s @ %s size=%.4f stop=%s target=%s score=%.2f %s slip=%.3f%%" % (
-            direction.upper(), symbol, money(fill), size, money(stop), money(target),
+            direction.upper(), symbol, price(fill), size, price(stop), price(target),
             conv["score"], conv["strength"], book_slippage_pct))
         send_telegram("OPEN %s %s @ %s score=%.2f" % (direction.upper(), symbol, money(fill), conv["score"]))
         self._save_state(force=True)

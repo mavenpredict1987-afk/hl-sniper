@@ -65,7 +65,7 @@ class OrderBookSnapshot:
         slip = (avg - mid) / mid * 100 if direction == "long" else (mid - avg) / mid * 100
         return max(slip, 0.0)
 
-    def depth(self, levels: int = 10):
+    def depth(self, levels: int = 20):
         bd = sum(s for _, s in self.bids[:levels])
         ad = sum(s for _, s in self.asks[:levels])
         ratio = bd / ad if ad > 0 else 999.0
@@ -180,17 +180,26 @@ class SniperModule:
         slippage = ob.estimate_slippage_pct(size, direction)
         d = ob.depth()
         side_usd = (d["bid"] if direction == "short" else d["ask"]) * mid
+        # Relative test: our order has to fit inside the resting notional on the
+        # side we would hit, with a small absolute floor for an empty book.
+        notional = size * mid
+        needed = max(config.LIQUIDITY_MIN_USD,
+                     notional / max(config.LIQUIDITY_MAX_SHARE, 1e-9))
         checks = {
             "spread_ok": spread < config.SPREAD_MAX_PCT,
             "slippage_ok": slippage < config.SLIPPAGE_MAX_PCT,
-            "liquidity_ok": side_usd > config.LIQUIDITY_MIN_USD,
+            "liquidity_ok": side_usd >= needed,
             "book_fresh": (time.time() - ob.timestamp) < config.BOOK_MAX_AGE_SEC,
         }
         if not all(checks.values()):
             self.rejected += 1
-            failed = ",".join(k for k, v in checks.items() if not v)
+            # Drop the "_ok" suffix: "checks failed: liquidity_ok" read as if the
+            # liquidity check had passed.
+            failed = ",".join(k[:-3] if k.endswith("_ok") else k
+                              for k, v in checks.items() if not v)
             return {"can_enter": False, "reason": "checks failed: %s" % failed,
-                    "checks": checks, "slippage_pct": slippage, "spread_pct": spread}
+                    "checks": checks, "slippage_pct": slippage, "spread_pct": spread,
+                    "side_usd": round(side_usd, 2), "needed_usd": round(needed, 2)}
         if slippage < config.SLIPPAGE_LIMIT_EXEC:
             execution = "limit"
         elif slippage < config.SLIPPAGE_MARKET_EXEC:

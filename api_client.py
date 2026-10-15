@@ -60,8 +60,12 @@ class HLClient:
         start_ms = now_ms - interval_ms(interval) * n_bars
         return self.candles(coin, interval, start_ms, now_ms)
 
-    def l2_book(self, coin, depth: int = 10):
-        """Returns top-of-book levels as (px, sz) lists plus mid prices."""
+    def l2_book(self, coin, depth: int = 20):
+        """Returns top-of-book levels as (px, sz) lists plus mid prices.
+
+        The exchange returns 20 levels; asking for 10 threw half the book away
+        and made fine-tick coins look illiquid.
+        """
         data = self._post({"type": "l2Book", "coin": coin})
         if not data or "levels" not in data or not data["levels"]:
             return None

@@ -26,3 +26,21 @@ def send_telegram(text):
 
 def money(x):
     return "%.2f" % x
+
+
+def price(x):
+    """Format a price with enough significant digits to stay readable.
+
+    money() rounds to two decimals, which printed DOGE entry, stop and target
+    all as "0.08" and made the log useless for cheap coins.
+    """
+    if x is None:
+        return "-"
+    a = abs(x)
+    if a >= 1000:
+        return "%.2f" % x
+    if a >= 1:
+        return "%.4f" % x
+    if a >= 0.01:
+        return "%.5f" % x
+    return "%.8f" % x

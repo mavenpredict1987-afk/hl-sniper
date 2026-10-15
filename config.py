@@ -155,7 +155,14 @@ REGIME_SIZE_MULT = {"low": 1.2, "normal": 1.0, "high": 0.5}
 
 SPREAD_MAX_PCT = 0.10
 SLIPPAGE_MAX_PCT = 0.50
-LIQUIDITY_MIN_USD = 5000.0
+# The REST l2Book returns a fixed 20 price levels whatever their spacing, so on
+# a fine-tick coin like HYPE the top ten levels hold only a few hundred dollars
+# while the real book is deep. A flat $5,000 floor therefore rejected HYPE, LIT,
+# UNI and ICP as "illiquid" while BTC sat at $800k. The floor is now small and
+# the real test is relative: our order may not be more than LIQUIDITY_MAX_SHARE
+# of the resting notional on the side we would trade.
+LIQUIDITY_MIN_USD = float(os.getenv("LIQUIDITY_MIN_USD", "1000"))
+LIQUIDITY_MAX_SHARE = float(os.getenv("LIQUIDITY_MAX_SHARE", "0.25"))
 # A book older than a couple of seconds is stale: the live bot this spec came
 # from refuses to snipe on anything older than 2s. 120s was ~60x too loose.
 BOOK_MAX_AGE_SEC = int(os.getenv("BOOK_MAX_AGE_SEC", "3"))
@@ -171,16 +178,24 @@ TIME_STOP_HOURS = 36.0
 COOLDOWN_AFTER_STOP_H = 6.0
 MIN_TARGET_PCT = 0.003
 
-# Correlation clusters: five groups instead of one. Without them the bot can
-# hold three AI coins at once and never notice it is a single bet.
+# Correlation clusters. Without them the bot opened three shorts (DOGE, ZEC,
+# UNI) inside twelve seconds and all three stopped out together for -$37.77.
+# Every coin the live universe can hold now belongs to a group.
 CLUSTERS = {
     "majors": ["BTC", "ETH", "SOL"],
-    "ai": ["RNDR", "TAO", "FET", "ARKM"],
+    "l1": ["BNB", "ADA", "AVAX", "NEAR", "SUI", "XRP", "LTC", "ASTER"],
+    "defi": ["UNI", "AAVE", "CRV", "AERO", "LINK", "ONDO"],
+    "ai": ["TAO", "RNDR", "FET", "ARKM"],
     "l2": ["ARB", "OP", "STRK", "MANTA"],
-    "depin": ["HNT", "IOT", "MOBILE"],
-    "rwa": ["ONDO", "CFG"],
+    "memes": ["DOGE", "TRUMP", "HYPE"],
+    "privacy": ["XMR", "ZEC"],
+    "metals": ["PAXG"],
 }
 MAX_CLUSTER_RISK_PCT = 0.03
+# Crypto beta dominates every other correlation, so cap one direction outright.
+# The three stopped shorts were 3.75% of equity in one direction, under the 6%
+# total cap. This is the limit that would have stopped the second and third.
+MAX_DIRECTION_RISK_PCT = float(os.getenv("MAX_DIRECTION_RISK_PCT", "0.02"))
 
 W_TREND = 0.35
 W_VOLUME = 0.25

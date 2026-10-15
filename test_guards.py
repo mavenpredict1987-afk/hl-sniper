@@ -52,7 +52,8 @@ def with_config(**overrides):
 check("SHORTS_ENABLED is a bool", isinstance(config.SHORTS_ENABLED, bool), config.SHORTS_ENABLED)
 check("ATR_TRAIL_MULT is numeric", isinstance(config.ATR_TRAIL_MULT, float), config.ATR_TRAIL_MULT)
 check("PARTIAL_RATIO is numeric", isinstance(config.PARTIAL_RATIO, float), config.PARTIAL_RATIO)
-check("correlation clusters cover five groups", len(config.CLUSTERS) == 5, sorted(config.CLUSTERS))
+check("correlation clusters cover the universe", len(config.CLUSTERS) >= 5,
+      sorted(config.CLUSTERS))
 check("every cluster has members",
       all(isinstance(v, list) and v for v in config.CLUSTERS.values()))
 check("cluster_of finds a member", "ai" in config.CLUSTERS)
@@ -184,6 +185,81 @@ check("the hard cap sits below the score ceiling", config.MAX_ENTRY_THRESHOLD < 
 check("the cap still bites on a hypothetical 1.5",
       min(config.CONVERGENCE_THRESHOLD * 1.5, config.MAX_ENTRY_THRESHOLD)
       == config.MAX_ENTRY_THRESHOLD)
+
+# --- 10. cluster risk must stay inside its own cluster --------------------
+bot = fresh()
+for sym in ("BTC", "ETH", "UNI"):
+    p = Position(sym, "long", 100.0, 10.0, 90.0, 200.0, 10.0, 5.0)
+    p.initial_size, p.initial_risk_usd = 10.0, 100.0
+    bot.positions[sym] = p
+check("same-cluster risk is summed", abs(bot.cluster_risk("BTC") - 200.0) < 1e-9,
+      bot.cluster_risk("BTC"))
+check("another cluster is not counted", abs(bot.cluster_risk("UNI") - 100.0) < 1e-9,
+      bot.cluster_risk("UNI"))
+check("the clusters cover the live universe",
+      all(c in {x for v in config.CLUSTERS.values() for x in v}
+          for c in ("DOGE", "ZEC", "UNI", "HYPE", "XMR", "PAXG", "ASTER", "AERO")),
+      sorted({x for v in config.CLUSTERS.values() for x in v}))
+
+# --- 11. directional cap --------------------------------------------------
+bot = fresh()
+for sym, dirn in (("BTC", "short"), ("ETH", "long")):
+    p = Position(sym, dirn, 100.0, 10.0, 90.0, 200.0, 10.0, 5.0)
+    p.initial_size, p.initial_risk_usd = 10.0, 100.0
+    bot.positions[sym] = p
+check("direction risk counts only shorts", abs(bot.direction_risk("short") - 100.0) < 1e-9,
+      bot.direction_risk("short"))
+check("direction risk counts only longs", abs(bot.direction_risk("long") - 100.0) < 1e-9,
+      bot.direction_risk("long"))
+
+
+def try_open(cap):
+    b = fresh()
+    b._save_state = lambda *a, **k: None
+    b.universe = {"SOL": {"tradable": True, "risk_pct_cap": 100.0, "class_max_leverage": 100}}
+    b.active_symbols = ["SOL"]
+    prev = with_config(MAX_DIRECTION_RISK_PCT=cap, MAX_TOTAL_RISK_PCT=0.50,
+                       MAX_CLUSTER_RISK_PCT=0.50, BASE_RISK_PER_TRADE=0.01,
+                       MIN_RISK_PCT=0.01, MAX_RISK_PCT=0.01, ATR_STOP_MULT=1.0,
+                       MAX_MARGIN_UTILIZATION=1.0, LEVERAGE=10)
+    try:
+        return b.open_position("SOL", "long", 100.0, 10.0,
+                               {"score": 0.60, "strength": "normal"}, 0.01)
+    finally:
+        with_config(**prev)
+
+
+check("a 0.5% directional cap refuses a 1% position", try_open(0.005) is False)
+check("a 5% directional cap allows it", try_open(0.05) is True)
+
+# --- 12. liquidity is a relative test, not a flat floor -------------------
+from sniper import SniperModule  # noqa: E402
+sm = SniperModule()
+# HYPE as measured live: about $4,800 resting on the bid across 20 levels,
+# which the old flat $5,000 floor rejected as illiquid.
+sm.update_order_book("HYPE", [(81.60, 2.95)] * 20, [(81.62, 522.0)] * 20)
+r = sm.analyze_entry("HYPE", "short", 8.0)
+check("a liquid coin clears the old flat floor", r["can_enter"], r.get("reason"))
+
+sm.update_order_book("THIN", [(1.0, 100.0)], [(1.01, 100.0)])
+r = sm.analyze_entry("THIN", "short", 10.0)
+check("a genuinely thin book is refused", not r["can_enter"], r.get("reason"))
+check("the reason names the failing check plainly",
+      "liquidity" in r["reason"] and "_ok" not in r["reason"], r["reason"])
+
+sm.update_order_book("BIG", [(100.0, 250.0)] * 20, [(100.1, 250.0)] * 20)
+small = sm.analyze_entry("BIG", "long", 1.0)
+large = sm.analyze_entry("BIG", "long", 4000.0)
+check("a small order fits a deep book", small["can_enter"], small.get("reason"))
+check("an oversized order is refused", not large["can_enter"], large.get("reason"))
+
+# --- 13. prices print with enough digits ---------------------------------
+from utils import price as fmt_price  # noqa: E402
+check("large prices stay short", fmt_price(82178.5) == "82178.50", fmt_price(82178.5))
+check("mid prices keep four digits", fmt_price(7.4154) == "7.4154", fmt_price(7.4154))
+check("cheap prices keep five", fmt_price(0.0812) == "0.08120", fmt_price(0.0812))
+check("DOGE entry stop and target no longer look identical",
+      len({fmt_price(0.0810), fmt_price(0.0795), fmt_price(0.0888)}) == 3)
 
 print()
 if failures:
