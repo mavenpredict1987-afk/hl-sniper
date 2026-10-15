@@ -231,7 +231,11 @@ class Bot:
         self.sniper.rejected = int(sniper.get("rejected", 0))
         # Older snapshots carried no counters; fall back to the window length.
         self.sniper.total_snipes = int(sniper.get("total_snipes", len(self.sniper.execution_history)))
-        self.sniper.strong_snipes = int(sniper.get("strong_snipes", 0))
+        # Snapshots written before the counters existed carry no strong count;
+        # seed it from the retained window rather than showing a hard zero.
+        window_strong = sum(1 for e in self.sniper.execution_history
+                            if e.get("strength") == "strong")
+        self.sniper.strong_snipes = int(sniper.get("strong_snipes", window_strong))
         self.sniper.slippage_sum = float(sniper.get("slippage_sum", 0.0))
         self.sniper.slippage_n = int(sniper.get("slippage_n", 0))
         if len(self.sniper.execution_history) > self.sniper.HISTORY_MAX:
