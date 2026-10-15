@@ -172,6 +172,19 @@ check("slippage is averaged into bps", stats["avg_slippage_bps"] > 0,
 check("the old key names still work",
       "rejected" in stats and "avg_slippage_pct" in stats)
 
+# --- 9. the entry bar must stay reachable ---------------------------------
+# A 1.5 multiplier put the bar at 0.55 * 1.5 = 0.825 while the normalised
+# score ceiling is about 0.80, so every high-volatility entry was rejected.
+worst = config.CONVERGENCE_THRESHOLD * max(config.REGIME_FILTER_MULT.values())
+check("the old 1.5 multiplier really was unreachable", config.CONVERGENCE_THRESHOLD * 1.5 > 0.80,
+      config.CONVERGENCE_THRESHOLD * 1.5)
+check("the current worst regime is reachable", worst < 0.80, worst)
+check("the hard cap sits below the score ceiling", config.MAX_ENTRY_THRESHOLD < 0.80,
+      config.MAX_ENTRY_THRESHOLD)
+check("the cap still bites on a hypothetical 1.5",
+      min(config.CONVERGENCE_THRESHOLD * 1.5, config.MAX_ENTRY_THRESHOLD)
+      == config.MAX_ENTRY_THRESHOLD)
+
 print()
 if failures:
     print("FAILED:", ", ".join(failures))

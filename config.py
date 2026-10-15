@@ -53,8 +53,12 @@ CONSEC_LOSS_PAUSE = int(os.getenv("CONSEC_LOSS_PAUSE", "0"))
 CONSEC_LOSS_PAUSE_SEC = float(os.getenv("CONSEC_LOSS_PAUSE_SEC", str(4 * 3600)))
 
 # Raise the entry threshold when volatility is high, instead of only shrinking
-# the position.
-REGIME_FILTER_MULT = {"low": 1.0, "normal": 1.0, "high": 1.5}
+# the position. Deliberately mild: the normalised score ceiling is about 0.80,
+# so 0.55 * 1.5 = 0.83 blocked EVERY entry in a high-vol regime - observed live
+# as "skip ETH: score 0.59 below regime bar 0.83 (high)". MAX_ENTRY_THRESHOLD
+# is a hard cap that keeps any future value below the achievable ceiling.
+REGIME_FILTER_MULT = {"low": 1.0, "normal": 1.0, "high": 1.1}
+MAX_ENTRY_THRESHOLD = float(os.getenv("MAX_ENTRY_THRESHOLD", "0.72"))
 
 # Symbols benched by live statistics rather than by intuition.
 BLACKLIST = {s.strip() for s in os.getenv("BLACKLIST", "").split(",") if s.strip()}

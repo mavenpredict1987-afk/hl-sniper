@@ -570,6 +570,8 @@ class Bot:
         threshold = config.CONVERGENCE_THRESHOLD * config.REGIME_FILTER_MULT.get(regime, 1.0)
         if symbol in config.WHITELIST:
             threshold -= config.WHITELIST_SCORE_BONUS
+        # Never let the bar climb above what the score can actually reach.
+        threshold = min(threshold, config.MAX_ENTRY_THRESHOLD)
         if conv["score"] < threshold:
             self._event("skip %s: score %.2f below regime bar %.2f (%s)" % (
                 symbol, conv["score"], threshold, regime))
