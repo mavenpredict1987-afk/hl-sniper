@@ -92,6 +92,11 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
 .sn{background:var(--card2);border-radius:10px;padding:8px 10px}
 .sn .t{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
 .sn .v{font-size:15px;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.cfg{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:10.5px;padding:4px 9px;border-radius:20px;border:1px solid var(--line);background:var(--card2);color:var(--dim)}
+.chip.on{color:var(--teal);border-color:rgba(92,242,201,.35)}
+.chip.off{color:var(--amber);border-color:rgba(251,191,36,.35)}
+.chip.warn{color:var(--red);border-color:rgba(248,113,113,.35)}
 </style>
 </head>
 <body>
@@ -134,6 +139,12 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
     <div class="stat"><div class="l">Uptime</div><div class="v" id="s-uptime">-</div><div class="h" id="s-started">-</div></div>
   </div></div></div>
   <div class="upd" id="eq-more" style="margin-top:6px">&#9662; stats</div>
+</div>
+
+<div class="card">
+  <div class="sec-cap">What the bot is doing right now</div>
+  <div class="cfg" id="cfg-row"></div>
+  <div class="note" id="cfg-note"></div>
 </div>
 
 <div class="acc">
@@ -231,6 +242,30 @@ function render(s){
     ph+='<div class="pchip"><span class="sym">'+sym+'</span>'+fmt(px, px<10?4:2)+'</div>';
   });
   document.getElementById('prices').innerHTML=ph||'<div class="empty">waiting for prices...</div>';
+
+  // active configuration: the guards are invisible otherwise, and a coin that
+  // silently stops trading needs a reason on screen
+  var st=s.settings||{}, chips=[];
+  function chip(t,k){ chips.push('<span class="chip '+(k||'')+'">'+t+'</span>'); }
+  chip(st.shorts_enabled?'longs + shorts':'longs only', st.shorts_enabled?'':'off');
+  chip(st.atr_trail_mult>0?('trail '+st.atr_trail_mult+'\u00d7ATR'):'no trailing',
+       st.atr_trail_mult>0?'on':'');
+  chip('partial '+Math.round((st.partial_ratio||0)*100)+'% at '+st.partial_at_r+'R');
+  chip('stop '+st.atr_stop_mult+'\u00d7ATR');
+  if(st.max_direction_risk_pct!=null) chip('per direction '+fmt(st.max_direction_risk_pct*100,1)+'%');
+  chip('clusters '+(st.clusters||0));
+  if(st.daily_stop_pct!=null) chip('daily stop '+fmt(st.daily_stop_pct*100,1)+'%');
+  if(st.price_poll_sec) chip('poll '+st.price_poll_sec+'s');
+  if(s.consec_losses>0) chip(s.consec_losses+' losses in a row', s.paused?'warn':''); 
+  var bench=s.benched||[];
+  if(bench.length) chip('benched: '+bench.join(', '),'warn');
+  document.getElementById('cfg-row').innerHTML=chips.join('');
+  var notes=[];
+  if(s.paused) notes.push('new entries paused');
+  if(s.halted) notes.push('halted: drawdown limit reached');
+  if(s.day_halt) notes.push('daily loss limit reached');
+  if(bench.length) notes.push('benched coins return automatically after the pause');
+  document.getElementById('cfg-note').textContent=notes.join(' \u00b7 ');
 
   // equity
   document.getElementById('eq').textContent='$'+fmt(s.equity);
