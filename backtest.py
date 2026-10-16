@@ -225,9 +225,15 @@ class ReplayClient:
         if not blob:
             return None
         px = blob["candles"][self.cursor]["c"]
+        # A fixed 5 units per level is not a book, it is a lottery on price:
+        # fifty units is $4.1M of BTC but four dollars of DOGE, so every cheap
+        # coin failed the liquidity guard and only BTC, ETH, BNB, SOL and ZEC
+        # were ever traded. Model a constant notional per side instead.
+        side_usd = 250000.0
+        units = side_usd / max(px, 1e-12) / max(depth, 1)
         half = px * 0.0001
-        bids = [(px - half - i * half, 5.0) for i in range(depth)]
-        asks = [(px + half + i * half, 5.0) for i in range(depth)]
+        bids = [(px - half - i * half, units) for i in range(depth)]
+        asks = [(px + half + i * half, units) for i in range(depth)]
         return {"bids": bids, "asks": asks, "bid_px": bids[0][0], "ask_px": asks[0][0]}
 
     def meta_and_ctxs(self, cache_sec=60):
