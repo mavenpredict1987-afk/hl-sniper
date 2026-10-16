@@ -35,10 +35,19 @@ MIN_RR_AFTER_COSTS = float(os.getenv("MIN_RR_AFTER_COSTS", "1.5"))
 # --- Guards and exit management taken from the reference bot ---------------
 # Source values and rationale: research/REFERENCE_FRIEND_BOT.md
 
-# Shorts lost money in both bots: theirs 15 days at WR 0-22%, ours 19 trades at
-# WR 32% for -$84 against -$22 on longs. Kept switchable so the backtest can
-# compare both settings before the default is changed.
-SHORTS_ENABLED = os.getenv("SHORTS_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+# Shorts are OFF. Three independent measurements agree, which is why this is now
+# the default rather than a switch waiting for evidence:
+#   - live here: shorts 19 trades, WR 32%, -$84 against longs -$22
+#   - the reference bot: 15 days, WR 0-22%, about -$1370, hence its own False
+#   - the ablation of 2026-10-16 on 19 coins over 208 days: with the other three
+#     guards identical, turning shorts back on moved +8.5% to -7.4%, a 15.9
+#     point swing, and doubled the trade count.
+# That same ablation showed the ATR trailing and the partial ratio changing
+# nothing (identical trades, identical profit factor), so only the direction
+# mattered. It also showed stop 1.35 beating 2.50 once shorts are off (+11.7%
+# against +8.5%), which retires the earlier "widen the stop" finding - that one
+# came from a run whose replay book made cheap coins untradable.
+SHORTS_ENABLED = os.getenv("SHORTS_ENABLED", "0").strip().lower() not in ("0", "false", "no")
 
 # Continuous ATR trailing once a partial has been booked. 0 keeps the old
 # single ratchet to +0.5R, which let winners hand everything back.
