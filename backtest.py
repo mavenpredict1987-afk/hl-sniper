@@ -379,6 +379,85 @@ def run_once(data, capital=10000.0, stop_mult=None, target_mult=None,
     return summarize(engine, data, capital)
 
 
+def run_random_control(data, capital=10000.0, stop_mult=None, target_mult=None,
+                       rate=0.002, seed=7, shorts=True, log=None):
+    """The same stops, target and sizing, but entries picked at random.
+
+    The question this answers: does the convergence engine predict anything, or
+    are the entries noise that pays fees? If random entries score the same, the
+    whole signal apparatus can go.
+    """
+    import random
+
+    import bot as bot_module
+    import config as config_module
+    import sniper as sniper_module
+    from indicators import atr_series
+
+    if stop_mult is not None:
+        config_module.ATR_STOP_MULT = stop_mult
+    if target_mult is not None:
+        config_module.ATR_TARGET_MULT = target_mult
+    config_module.SHORTS_ENABLED = bool(shorts)
+
+    rng = random.Random(seed)
+    clock = SimClock()
+    bot_module.time = clock
+    sniper_module.time = clock
+    replay = ReplayClient(data)
+    engine = bot_module.Bot()
+    engine.client = replay
+    engine.capital = capital
+    engine.cash = capital
+    engine.equity = capital
+    engine.peak = capital
+    engine.day_start_equity = capital
+    engine.trades = []
+    engine.events = []
+    engine.equity_history = []
+    engine.positions = {}
+    engine.win_count = engine.loss_count = 0
+    engine.win_sum = engine.loss_sum = engine.r_sum = 0.0
+    engine.funding_paid = 0.0
+    engine._day_stamp = lambda: time.strftime("%Y-%m-%d", time.gmtime(clock.now))
+    engine._save_state = lambda *a, **k: None
+    engine._event = lambda msg: None
+    engine.universe = {c: {"tradable": True, "risk_pct_cap": 100.0,
+                           "class_max_leverage": 100} for c in data}
+    engine.active_symbols = list(data.keys())
+
+    atrs = {}
+    for coin, blob in data.items():
+        atrs[coin] = atr_series([b["h"] for b in blob["candles"]],
+                                [b["l"] for b in blob["candles"]],
+                                [b["c"] for b in blob["candles"]])
+
+    length = min(len(blob["candles"]) for blob in data.values())
+    for i in range(120, length):
+        clock.now = data[engine.active_symbols[0]]["candles"][i]["t"] / 1000.0
+        replay.cursor = i
+        engine.last_prices = replay.all_mids()
+        for coin, blob in data.items():
+            rates = blob.get("funding_by_bar") or []
+            manage_bar(engine, coin, blob["candles"][i], clock,
+                       rates[i] if i < len(rates) else 0.0)
+        for coin in engine.active_symbols:
+            if rng.random() >= rate:
+                continue
+            series = atrs[coin]
+            a = series[i] if i < len(series) else 0.0
+            if a <= 0:
+                continue
+            direction = "long" if rng.random() < (1.0 if not shorts else 0.5) else "short"
+            engine.open_position(coin, direction, data[coin]["candles"][i]["c"], a,
+                                 {"score": 0.60, "strength": "normal"}, 0.01)
+        snapshot_equity(engine, clock)
+        if log and i % 1000 == 0:
+            log("    bar %d/%d equity=%.2f trades=%d" % (
+                i, length, engine.equity, len(engine.trades)))
+    return summarize(engine, data, capital)
+
+
 def summarize(engine, data, capital):
     trades = engine.trades
     wins = [t for t in trades if t["pnl"] > 0]

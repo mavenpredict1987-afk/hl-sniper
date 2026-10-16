@@ -1,8 +1,11 @@
 __pycache__/
 *.pyc
 .devlibs/
-_capture/
-state/
+.secrets/
 bt_cache/
+bt_*.json
 bt_*.log
-bt_results.json
+bt_*.sh
+state.json
+universe.json
+.env
