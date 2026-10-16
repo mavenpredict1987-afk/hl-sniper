@@ -34,6 +34,7 @@ class Position:
     initial_risk_usd: float = 0.0
     partial_done: bool = False
     realized_pnl: float = 0.0
+    entry_fee: float = 0.0
     entry_time: float = field(default_factory=time.time)
 
 
@@ -454,6 +455,7 @@ class Bot:
         self.cash -= fee
         pos = Position(symbol, direction, fill, size, stop, target, risk_dist, atr_val)
         pos.initial_size = size
+        pos.entry_fee = fee
         pos.initial_risk_usd = risk_dist * size
         self.positions[symbol] = pos
         self._event("OPEN %s %s @ %s size=%.4f stop=%s target=%s score=%.2f %s slip=%.3f%%" % (
@@ -479,10 +481,12 @@ class Bot:
         fee = pos.size * fill * config.TAKER_FEE
         net = pnl - fee
         self.cash += net
-        # Profit taken by an earlier partial belongs to this trade as well.
-        # Counting only the closing leg made profit factor contradict the
-        # equity curve: trades read as losing while the account was up.
-        total = net + pos.realized_pnl
+        # The whole round trip, so the trade record matches the cash movement.
+        # The entry fee was already taken from cash at open but was left out of
+        # the record, which overstated every trade's PnL, its R, the winrate and
+        # the profit factor - and produced the impossible combination of a
+        # positive average R on a losing account.
+        total = net + pos.realized_pnl - pos.entry_fee
         base = (pos.initial_size or pos.size) * pos.entry
         ret_pct = total / base if base > 0 else 0.0
         if total > 0:

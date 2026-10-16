@@ -308,6 +308,69 @@ check("a winning exit is not counted", not win.symbol_stops.get("XRP"))
 check("stops are written into the state snapshot",
       "SOL" in (bot._state_snapshot().get("symbol_stops") or {}))
 
+# --- 15. a trade record must equal the cash it moved ---------------------
+# The entry fee used to be taken from cash at open and left out of the record,
+# which overstated PnL, R, winrate and profit factor, and produced the
+# impossible pairing of a positive average R with a losing account.
+def open_close(exit_px, partial_at=None):
+    b = fresh()
+    b._save_state = lambda *a, **k: None
+    b.universe = {"SOL": {"tradable": True, "risk_pct_cap": 100.0, "class_max_leverage": 100}}
+    b.active_symbols = ["SOL"]
+    prev = with_config(MAX_DIRECTION_RISK_PCT=0.50, MAX_TOTAL_RISK_PCT=0.50,
+                       MAX_CLUSTER_RISK_PCT=0.50, BASE_RISK_PER_TRADE=0.01,
+                       MIN_RISK_PCT=0.01, MAX_RISK_PCT=0.01, ATR_STOP_MULT=1.0,
+                       MAX_MARGIN_UTILIZATION=1.0, LEVERAGE=10)
+    try:
+        before = b.cash
+        b.open_position("SOL", "long", 100.0, 10.0,
+                        {"score": 0.60, "strength": "normal"}, 0.01)
+        if partial_at is not None:
+            b.book_partial(b.positions["SOL"], "SOL", partial_at)
+        b.close_position("SOL", exit_px, "target")
+        return b, before
+    finally:
+        with_config(**prev)
+
+
+b, before = open_close(150.0)
+check("a winning trade matches the cash it moved",
+      abs(b.trades[-1]["pnl"] - (b.cash - before)) < 1e-9,
+      (round(b.trades[-1]["pnl"], 6), round(b.cash - before, 6)))
+
+b, before = open_close(90.0)
+check("a losing trade matches the cash it moved",
+      abs(b.trades[-1]["pnl"] - (b.cash - before)) < 1e-9,
+      (round(b.trades[-1]["pnl"], 6), round(b.cash - before, 6)))
+
+b, before = open_close(150.0, partial_at=130.0)
+check("a trade with a partial matches the cash it moved",
+      abs(b.trades[-1]["pnl"] - (b.cash - before)) < 1e-9,
+      (round(b.trades[-1]["pnl"], 6), round(b.cash - before, 6)))
+
+
+def entry_fee_of_a_new_position():
+    b = fresh()
+    b._save_state = lambda *a, **k: None
+    b.universe = {"SOL": {"tradable": True, "risk_pct_cap": 100.0, "class_max_leverage": 100}}
+    b.active_symbols = ["SOL"]
+    prev = with_config(MAX_DIRECTION_RISK_PCT=0.50, MAX_TOTAL_RISK_PCT=0.50,
+                       MAX_CLUSTER_RISK_PCT=0.50, BASE_RISK_PER_TRADE=0.01,
+                       MIN_RISK_PCT=0.01, MAX_RISK_PCT=0.01, ATR_STOP_MULT=1.0,
+                       MAX_MARGIN_UTILIZATION=1.0, LEVERAGE=10)
+    try:
+        b.open_position("SOL", "long", 100.0, 10.0,
+                        {"score": 0.60, "strength": "normal"}, 0.01)
+        return b.positions["SOL"].entry_fee
+    finally:
+        with_config(**prev)
+
+
+check("the entry fee is stored on the position",
+      entry_fee_of_a_new_position() > 0, entry_fee_of_a_new_position())
+check("a fresh Position defaults to no entry fee",
+      Position("S", "long", 1.0, 1.0, 1.0, 1.0, 1.0, 1.0).entry_fee == 0.0)
+
 print()
 if failures:
     print("FAILED:", ", ".join(failures))
