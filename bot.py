@@ -61,6 +61,7 @@ class Bot:
         self.cooldowns = {}
         self.consec_losses = 0
         self.loss_pause_until = 0.0
+        self.symbol_stops = {}
         self.r_sum = 0.0
         self.equity_history = []
         self.client = HLClient()
@@ -169,6 +170,9 @@ class Bot:
             "loss_sum": self.loss_sum,
             "r_sum": self.r_sum,
             "cooldowns": dict(self.cooldowns),
+            "symbol_stops": {k: list(v) for k, v in self.symbol_stops.items()},
+            "consec_losses": self.consec_losses,
+            "loss_pause_until": self.loss_pause_until,
             "last_prices": dict(self.last_prices),
             "last_candle_ts": dict(self.last_candle_ts),
             "equity_history": list(self.equity_history),
@@ -219,6 +223,14 @@ class Bot:
         self.loss_sum = float(data.get("loss_sum", 0.0))
         self.r_sum = float(data.get("r_sum", 0.0))
         self.cooldowns = {k: float(v) for k, v in (data.get("cooldowns") or {}).items()}
+        # Keep only stops still inside the window, so the map cannot grow forever.
+        cutoff = time.time() - config.AUTO_BLACKLIST_WINDOW_DAYS * 86400.0
+        self.symbol_stops = {
+            k: [float(t) for t in v if float(t) > cutoff]
+            for k, v in (data.get("symbol_stops") or {}).items()}
+        self.symbol_stops = {k: v for k, v in self.symbol_stops.items() if v}
+        self.consec_losses = int(data.get("consec_losses", 0))
+        self.loss_pause_until = float(data.get("loss_pause_until", 0.0))
         self.last_prices = {k: float(v) for k, v in (data.get("last_prices") or {}).items()}
         self.last_candle_ts = dict(data.get("last_candle_ts") or {})
         self.equity_history = [list(x) for x in (data.get("equity_history") or [])]
@@ -324,6 +336,25 @@ class Bot:
             if p.direction == direction:
                 risk += p.risk_dist * p.size
         return risk
+
+    def symbol_benched(self, symbol):
+        """True while a coin is serving an auto-blacklist pause.
+
+        The reference bot benches a coin after two stops in thirty days and
+        keeps it out for a fortnight. Doing it by hand means acting after the
+        losses; doing it here means the coin leaves the pool on its own.
+        """
+        if config.AUTO_BLACKLIST_STOPS <= 0:
+            return False
+        now = time.time()
+        window = config.AUTO_BLACKLIST_WINDOW_DAYS * 86400.0
+        stops = [t for t in self.symbol_stops.get(symbol, []) if now - t < window]
+        if len(stops) < config.AUTO_BLACKLIST_STOPS:
+            return False
+        return now < stops[-1] + config.AUTO_BLACKLIST_PAUSE_DAYS * 86400.0
+
+    def benched_symbols(self):
+        return sorted(s for s in self.symbol_stops if self.symbol_benched(s))
 
     def cost_pct(self, funding_hourly=0.0, direction="long", hours=None):
         """Round-trip cost as a fraction of notional: fees + slippage + funding.
@@ -438,7 +469,10 @@ class Bot:
             return
         # Drop this coin's signals so a stale set cannot trigger an instant
         # re-entry on the very next scan.
-        self.sniper.convergence.signals.pop(symbol, None)
+        if config.RESET_SIGNALS_ON_CLOSE:
+            self.sniper.convergence.signals.pop(symbol, None)
+        if reason == "stop":
+            self.symbol_stops.setdefault(symbol, []).append(time.time())
         slip = config.SLIPPAGE / 4
         fill = price * (1 - slip) if pos.direction == "long" else price * (1 + slip)
         pnl = (fill - pos.entry) * pos.size if pos.direction == "long" else (pos.entry - fill) * pos.size
@@ -553,6 +587,8 @@ class Bot:
         if time.time() < self.cooldowns.get(symbol, 0):
             return
         if time.time() < self.loss_pause_until:
+            return
+        if self.symbol_benched(symbol):
             return
         now_ms = int(time.time() * 1000)
         start_ms = now_ms - config.CANDLE_COUNT * 3600 * 1000
@@ -718,6 +754,7 @@ class Bot:
             },
             "consec_losses": self.consec_losses,
             "loss_pause_until": self.loss_pause_until,
+            "benched": self.benched_symbols(),
             "events": list(reversed(self.events[-20:]))})
         HealthHandler.bot_status = self.status
         self._save_state()

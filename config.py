@@ -52,6 +52,18 @@ KELLY_NEGATIVE_MULT = float(os.getenv("KELLY_NEGATIVE_MULT", "1.0"))
 CONSEC_LOSS_PAUSE = int(os.getenv("CONSEC_LOSS_PAUSE", "0"))
 CONSEC_LOSS_PAUSE_SEC = float(os.getenv("CONSEC_LOSS_PAUSE_SEC", str(4 * 3600)))
 
+# Drop a coin's signals when its position closes, so a stale set cannot fire an
+# instant re-entry.
+RESET_SIGNALS_ON_CLOSE = os.getenv("RESET_SIGNALS_ON_CLOSE", "1").strip().lower() not in (
+    "0", "false", "no")
+
+# Auto-blacklist, as the reference bot runs it: a coin that stops out twice
+# inside thirty days is not unlucky, it is mistimed, so it is benched for a
+# fortnight. This replaces benching coins by hand after the fact.
+AUTO_BLACKLIST_STOPS = int(os.getenv("AUTO_BLACKLIST_STOPS", "2"))
+AUTO_BLACKLIST_WINDOW_DAYS = float(os.getenv("AUTO_BLACKLIST_WINDOW_DAYS", "30"))
+AUTO_BLACKLIST_PAUSE_DAYS = float(os.getenv("AUTO_BLACKLIST_PAUSE_DAYS", "14"))
+
 # Raise the entry threshold when volatility is high, instead of only shrinking
 # the position. Deliberately mild: the normalised score ceiling is about 0.80,
 # so 0.55 * 1.5 = 0.83 blocked EVERY entry in a high-vol regime - observed live

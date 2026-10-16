@@ -9,6 +9,7 @@ Run: PYTHONPATH=.devlibs python3 test_guards.py
 import os
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -260,6 +261,52 @@ check("mid prices keep four digits", fmt_price(7.4154) == "7.4154", fmt_price(7.
 check("cheap prices keep five", fmt_price(0.0812) == "0.08120", fmt_price(0.0812))
 check("DOGE entry stop and target no longer look identical",
       len({fmt_price(0.0810), fmt_price(0.0795), fmt_price(0.0888)}) == 3)
+
+# --- 14. auto-blacklist ---------------------------------------------------
+bot = fresh()
+now = time.time()
+check("a fresh coin is not benched", not bot.symbol_benched("DOGE"))
+bot.symbol_stops["DOGE"] = [now]
+check("one stop does not bench", not bot.symbol_benched("DOGE"))
+bot.symbol_stops["DOGE"] = [now, now]
+check("two stops bench the coin", bot.symbol_benched("DOGE"))
+check("the bench appears in the list", "DOGE" in bot.benched_symbols())
+
+old = now - (config.AUTO_BLACKLIST_WINDOW_DAYS + 1) * 86400.0
+bot.symbol_stops["ZEC"] = [old, old]
+check("stops outside the window do not bench", not bot.symbol_benched("ZEC"))
+bot.symbol_stops["UNI"] = [old, old, old]
+check("only recent stops count", not bot.symbol_benched("UNI"))
+
+gone = now - (config.AUTO_BLACKLIST_PAUSE_DAYS + 1) * 86400.0
+bot.symbol_stops["ADA"] = [gone, gone]
+check("the pause expires on its own", not bot.symbol_benched("ADA"))
+
+prev = with_config(AUTO_BLACKLIST_STOPS=0)
+check("zero stops switches the feature off", not bot.symbol_benched("DOGE"))
+with_config(**prev)
+
+# stops are recorded by the close path, wins are not
+bot = fresh()
+for expected in (1, 2):
+    p = Position("SOL", "long", 100.0, 10.0, 90.0, 200.0, 10.0, 5.0)
+    p.initial_size, p.initial_risk_usd = 10.0, 100.0
+    bot.positions["SOL"] = p
+    bot.close_position("SOL", 90.0, "stop")
+    check("stop %d is recorded" % expected,
+          len(bot.symbol_stops.get("SOL") or []) == expected,
+          bot.symbol_stops.get("SOL"))
+check("the second stop benches the coin", bot.symbol_benched("SOL"))
+
+win = fresh()
+p = Position("XRP", "long", 100.0, 10.0, 90.0, 200.0, 10.0, 5.0)
+p.initial_size, p.initial_risk_usd = 10.0, 100.0
+win.positions["XRP"] = p
+win.close_position("XRP", 150.0, "target")
+check("a winning exit is not counted", not win.symbol_stops.get("XRP"))
+
+check("stops are written into the state snapshot",
+      "SOL" in (bot._state_snapshot().get("symbol_stops") or {}))
 
 print()
 if failures:
