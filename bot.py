@@ -18,6 +18,7 @@ from health_server import start_health_server, HealthHandler
 from utils import setup_logging, send_telegram, money, price, logger
 import state_store
 import universe
+import pairs as pairs_module
 
 
 @dataclass
@@ -67,6 +68,7 @@ class Bot:
         self.equity_history = []
         self.client = HLClient()
         self.sniper = SniperModule()
+        self.pairs = pairs_module.PairsModule(self)
         self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
         self.restarts = 0
         self.last_save_ts = 0.0
@@ -172,6 +174,12 @@ class Bot:
             "r_sum": self.r_sum,
             "cooldowns": dict(self.cooldowns),
             "symbol_stops": {k: list(v) for k, v in self.symbol_stops.items()},
+            "pairs": {
+                "positions": [p.__dict__ for p in self.pairs.positions],
+                "closed": list(self.pairs.closed),
+                "stats": dict(self.pairs.stats),
+                "last_rebalance": self.pairs.last_rebalance,
+            },
             "consec_losses": self.consec_losses,
             "loss_pause_until": self.loss_pause_until,
             "last_prices": dict(self.last_prices),
@@ -234,6 +242,16 @@ class Bot:
         self.loss_pause_until = float(data.get("loss_pause_until", 0.0))
         self.last_prices = {k: float(v) for k, v in (data.get("last_prices") or {}).items()}
         self.last_candle_ts = dict(data.get("last_candle_ts") or {})
+        pair_state = data.get("pairs") or {}
+        self.pairs.positions = []
+        for raw in pair_state.get("positions") or []:
+            try:
+                self.pairs.positions.append(pairs_module.PairPosition(**raw))
+            except TypeError:
+                continue
+        self.pairs.closed = list(pair_state.get("closed") or [])
+        self.pairs.stats.update(pair_state.get("stats") or {})
+        self.pairs.last_rebalance = float(pair_state.get("last_rebalance", 0.0))
         self.equity_history = [list(x) for x in (data.get("equity_history") or [])]
         self.halted = bool(data.get("halted", False))
         self.day_halt = bool(data.get("day_halt", False))
@@ -762,6 +780,8 @@ class Bot:
             "consec_losses": self.consec_losses,
             "loss_pause_until": self.loss_pause_until,
             "benched": self.benched_symbols(),
+            "sniper_enabled": config.SNIPER_ENABLED,
+            "pairs": self.pairs.get_stats(),
             "events": list(reversed(self.events[-20:]))})
         HealthHandler.bot_status = self.status
         self._save_state()
@@ -782,7 +802,8 @@ class Bot:
                     if sym in mids:
                         self.last_prices[sym] = mids[sym]
                 self.manage_positions()
-                if self._candle_window_open():
+                self.pairs.on_cycle()
+                if config.SNIPER_ENABLED and self._candle_window_open():
                     self._scan_candles(self.client.meta_and_ctxs())
                 self.update_status()
                 time.sleep(config.PRICE_POLL_SEC)

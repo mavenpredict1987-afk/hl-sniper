@@ -147,6 +147,13 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
   <div class="note" id="cfg-note"></div>
 </div>
 
+<div class="card">
+  <div class="sec-cap">Pairs &mdash; market neutral</div>
+  <div class="cfg" id="pairs-row"></div>
+  <div id="pairs-open" style="margin-top:8px"></div>
+  <div class="note" id="pairs-note"></div>
+</div>
+
 <div class="acc">
   <div class="acc-head" onclick="toggle('acc-pos')"><span class="acc-ico">&#9636;</span>Open positions<span class="acc-sub" id="pos-count">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body open" id="acc-pos"><div class="acc-inner"><div style="padding-top:10px">
@@ -266,6 +273,31 @@ function render(s){
   if(s.day_halt) notes.push('daily loss limit reached');
   if(bench.length) notes.push('benched coins return automatically after the pause');
   document.getElementById('cfg-note').textContent=notes.join(' \u00b7 ');
+
+  // pairs module: the one strategy that survived an out-of-sample split
+  var pr=s.pairs||{};
+  function pchip(t,k){ return '<span class="chip '+(k||'')+'">'+t+'</span>'; }
+  var prow=[];
+  if(pr.enabled){ prow.push(pchip('on','on')); } else { prow.push(pchip('off','off')); }
+  prow.push(pchip((pr.trades||0)+' pairs'));
+  if(pr.trades) prow.push(pchip('winrate '+pr.winrate+'%'));
+  prow.push(pchip('realised '+(pr.pnl>=0?'+':'')+'$'+fmt(pr.pnl||0), pr.pnl>0?'on':(pr.pnl<0?'warn':'')));
+  prow.push(pchip('open '+(pr.unrealized>=0?'+':'')+'$'+fmt(pr.unrealized||0)));
+  prow.push(pchip('lookback '+(pr.lookback_h||0)+'h / hold '+(pr.hold_h||0)+'h'));
+  prow.push(pchip((pr.n_pairs||0)+' pairs, '+Math.round((pr.exposure||0)*100)+'%'));
+  if(pr.enabled) prow.push(pchip('next rebalance in '+(pr.next_rebalance_h||0)+'h'));
+  document.getElementById('pairs-row').innerHTML=prow.join('');
+  var poh='';
+  (pr.open_pairs||[]).forEach(function(q){
+    poh+='<div class="ev"><span>long '+q.long+' / short '+q.short+'</span>'
+       +'<span style="color:var(--dim)">$'+fmt(q.notional)+' &middot; '+q.hours+'h</span></div>';
+  });
+  (pr.recent||[]).slice(0,4).forEach(function(q){
+    poh+='<div class="ev"><span>closed '+q.long+'/'+q.short+'</span>'
+       +'<span class="'+(q.pnl>=0?'pos':'neg')+'">'+(q.pnl>=0?'+':'')+'$'+fmt(q.pnl)+'</span></div>';
+  });
+  document.getElementById('pairs-open').innerHTML=poh;
+  document.getElementById('pairs-note').textContent=pr.last_error?('last error: '+pr.last_error):'';
 
   // equity
   document.getElementById('eq').textContent='$'+fmt(s.equity);

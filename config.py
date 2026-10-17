@@ -66,6 +66,24 @@ CONSEC_LOSS_PAUSE_SEC = float(os.getenv("CONSEC_LOSS_PAUSE_SEC", str(4 * 3600)))
 RESET_SIGNALS_ON_CLOSE = os.getenv("RESET_SIGNALS_ON_CLOSE", "1").strip().lower() not in (
     "0", "false", "no")
 
+# --- Market-neutral pairs ---------------------------------------------------
+# The only strategy that survived an out-of-sample split (RESEARCH_LOG.md #37):
+# long the weakest coins over a seven day lookback, short the strongest, equal
+# notional, held two days. Both halves positive, eight parameter variants
+# positive, correlation to the market about -0.15.
+PAIRS_ENABLED = os.getenv("PAIRS_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+PAIRS_LOOKBACK_H = int(os.getenv("PAIRS_LOOKBACK_H", "168"))
+PAIRS_HOLD_H = int(os.getenv("PAIRS_HOLD_H", "48"))
+PAIRS_N = int(os.getenv("PAIRS_N", "3"))
+PAIRS_EXPOSURE = float(os.getenv("PAIRS_EXPOSURE", "0.20"))
+
+# The sniper is OFF by default. On 52 coins over 208 days it returned +9.8%
+# while an equal-weight basket of the same coins returned about +29.5%, and its
+# two halves were -3.3% and +26.0%, so the positive number was one favourable
+# stretch rather than a repeatable edge. Turning it back on is one variable.
+SNIPER_ENABLED = os.getenv("SNIPER_ENABLED", "0").strip().lower() not in (
+    "0", "false", "no")
+
 # Auto-blacklist, as the reference bot runs it: a coin that stops out twice
 # inside thirty days is not unlucky, it is mistimed, so it is benched for a
 # fortnight. This replaces benching coins by hand after the fact.
