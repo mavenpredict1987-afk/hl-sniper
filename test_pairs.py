@@ -143,6 +143,31 @@ check("nothing closes early", len(mod4.positions) == 3, len(mod4.positions))
 mod4._close_due(1000.0 + 49 * 3600)
 check("everything closes once due", len(mod4.positions) == 0, len(mod4.positions))
 
+# --- 5b. a pair that cannot be priced must not vanish ---------------------
+class BlindClient(FakeClient):
+    def all_mids(self):
+        return {}
+
+
+bot6 = FakeBot(RETURNS)
+bot6.client = BlindClient(RETURNS)
+mod6 = PairsModule(bot6)
+mod6._rebalance(1000.0)
+bot6.last_prices = {}                          # every coin left the universe
+mod6._close_due(1000.0 + 49 * 3600)
+check("an unpriceable pair is kept, not dropped", len(mod6.positions) == 3,
+      len(mod6.positions))
+check("and nothing is booked", mod6.stats["trades"] == 0, mod6.stats)
+check("the reason is reported", "cannot price" in mod6.last_error, mod6.last_error)
+
+# once prices come back it closes and books
+bot6.last_prices = {p.long_sym: p.long_entry * 1.02 for p in mod6.positions}
+bot6.last_prices.update({p.short_sym: p.short_entry * 0.98 for p in mod6.positions})
+mod6._close_due(1000.0 + 50 * 3600)
+check("it closes as soon as a price exists", len(mod6.positions) == 0,
+      len(mod6.positions))
+check("and the trades are booked", mod6.stats["trades"] == 3, mod6.stats)
+
 # --- 6. the switch and the report -----------------------------------------
 prev2 = with_config(PAIRS_ENABLED=False)
 bot5 = FakeBot(RETURNS)

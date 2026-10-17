@@ -103,7 +103,11 @@ class PairsModule:
             if now < pos.due:
                 keep.append(pos)
                 continue
-            self._close(pos, now)
+            # A pair whose coins left the active universe has no last_price.
+            # Dropping it here erased the trade from the statistics entirely,
+            # so it stays open until a price can be found.
+            if not self._close(pos, now):
+                keep.append(pos)
         self.positions = keep
 
     def _rebalance(self, now):
@@ -139,11 +143,25 @@ class PairsModule:
             len(self.positions), len(rows)))
         self.bot._save_state(force=True)
 
+    def _price(self, symbol):
+        """Last price, falling back to the exchange for a coin that has left
+        the active universe."""
+        px = self.bot.last_prices.get(symbol)
+        if px and px > 0:
+            return px
+        try:
+            mids = self.bot.client.all_mids()
+        except Exception:
+            return None
+        px = (mids or {}).get(symbol)
+        return px if px and px > 0 else None
+
     def _close(self, pos, now):
-        lp = self.bot.last_prices.get(pos.long_sym)
-        sp = self.bot.last_prices.get(pos.short_sym)
+        lp = self._price(pos.long_sym)
+        sp = self._price(pos.short_sym)
         if not lp or not sp or lp <= 0 or sp <= 0:
-            return
+            self.last_error = "cannot price %s/%s yet" % (pos.long_sym, pos.short_sym)
+            return False
         cost = config.TAKER_FEE + config.SLIPPAGE / 4.0
 
         long_ret = lp / pos.long_entry - 1.0
@@ -168,6 +186,7 @@ class PairsModule:
         self.bot._event("PAIRS close: %s/%s pnl $%+.2f" % (
             pos.long_sym, pos.short_sym, net))
         logger.info("PAIRS close %s/%s: $%+.2f", pos.long_sym, pos.short_sym, net)
+        return True
 
     # ---------- reporting ----------
     def unrealized(self):
