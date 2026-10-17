@@ -5,6 +5,20 @@ point for a new session — read it first, then `research/REFERENCE_FRIEND_BOT.m
 
 ---
 
+## Current focus (2026-10-17)
+
+**The sniper is OFF** (`SNIPER_ENABLED=0`) and a market-neutral **pairs module**
+runs in its place. See `FROZEN.md` for the experiment and `RESEARCH_LOG.md` for
+why everything else was rejected.
+
+Pairs: every 48h rank the active universe by its 7 day return, long the three
+weakest, short the three strongest, equal notional, 20% exposure. Backtest over
+208 days: +17.9%, PF 1.22, DD 5.4%, correlation to the market -0.15, and both
+halves positive (+10.5% / +7.8%) - the only strategy here to survive that split.
+First three pairs opened 2026-10-17 07:31 UTC.
+
+Frozen until 2026-10-31 or 30 closed pairs. Do not tune parameters before then.
+
 ## Live deployment
 
 | | |
