@@ -798,7 +798,15 @@ class Bot:
         while self.running:
             try:
                 mids = self.client.all_mids()
-                for sym in self.active_symbols:
+                # Prices must keep updating for anything we are HOLDING, not
+                # just the active universe. A coin that rotates out while a
+                # pair is open otherwise freezes at its old price and the pair
+                # is reported at a PnL that has nothing to do with reality.
+                watched = set(self.active_symbols) | set(self.positions)
+                for pos in self.pairs.positions:
+                    watched.add(pos.long_sym)
+                    watched.add(pos.short_sym)
+                for sym in watched:
                     if sym in mids:
                         self.last_prices[sym] = mids[sym]
                 self.manage_positions()
