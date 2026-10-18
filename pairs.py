@@ -189,16 +189,18 @@ class PairsModule:
         return True
 
     # ---------- reporting ----------
+    def _pair_pnl(self, pos):
+        """Unrealised PnL of one pair, nil if either price is missing."""
+        lp = self.bot.last_prices.get(pos.long_sym)
+        sp = self.bot.last_prices.get(pos.short_sym)
+        if not lp or not sp:
+            return 0.0
+        return pos.notional * ((lp / pos.long_entry - 1.0)
+                               + (1.0 - sp / pos.short_entry))
+
     def unrealized(self):
         total = 0.0
-        for pos in self.positions:
-            lp = self.bot.last_prices.get(pos.long_sym)
-            sp = self.bot.last_prices.get(pos.short_sym)
-            if not lp or not sp:
-                continue
-            total += pos.notional * ((lp / pos.long_entry - 1.0)
-                                     + (1.0 - sp / pos.short_entry))
-        return total
+        return sum(self._pair_pnl(pos) for pos in self.positions)
 
     def next_rebalance_hours(self):
         if not self.last_rebalance:
@@ -228,6 +230,11 @@ class PairsModule:
                         for r in self.last_ranking[-3:]],
             "open_pairs": [{"long": p.long_sym, "short": p.short_sym,
                             "notional": round(p.notional, 2),
+                            "long_entry": round(p.long_entry, 6),
+                            "short_entry": round(p.short_entry, 6),
+                            "long_px": round(self.bot.last_prices.get(p.long_sym) or 0, 6),
+                            "short_px": round(self.bot.last_prices.get(p.short_sym) or 0, 6),
+                            "pnl": round(self._pair_pnl(p), 2),
                             "hours": round((time.time() - p.opened) / 3600.0, 1)}
                            for p in self.positions],
             "recent": list(reversed(self.closed[-10:])),

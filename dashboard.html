@@ -279,7 +279,7 @@ function render(s){
   function pchip(t,k){ return '<span class="chip '+(k||'')+'">'+t+'</span>'; }
   var prow=[];
   if(pr.enabled){ prow.push(pchip('on','on')); } else { prow.push(pchip('off','off')); }
-  prow.push(pchip((pr.trades||0)+' pairs'));
+  prow.push(pchip((pr.trades||0)+' closed'));
   if(pr.trades) prow.push(pchip('winrate '+pr.winrate+'%'));
   prow.push(pchip('realised '+(pr.pnl>=0?'+':'')+'$'+fmt(pr.pnl||0), pr.pnl>0?'on':(pr.pnl<0?'warn':'')));
   prow.push(pchip('open '+(pr.unrealized>=0?'+':'')+'$'+fmt(pr.unrealized||0)));
@@ -289,8 +289,9 @@ function render(s){
   document.getElementById('pairs-row').innerHTML=prow.join('');
   var poh='';
   (pr.open_pairs||[]).forEach(function(q){
-    poh+='<div class="ev"><span>long '+q.long+' / short '+q.short+'</span>'
-       +'<span style="color:var(--dim)">$'+fmt(q.notional)+' &middot; '+q.hours+'h</span></div>';
+    var c=(q.pnl>=0)?'pos':'neg';
+    poh+='<div class="ev"><span>long '+q.long+' @ '+q.long_entry+' &middot; short '+q.short+' @ '+q.short_entry+'</span>'
+       +'<span class="'+c+'">'+(q.pnl>=0?'+':'')+'$'+fmt(q.pnl)+' &middot; '+q.hours+'h</span></div>';
   });
   (pr.recent||[]).slice(0,4).forEach(function(q){
     poh+='<div class="ev"><span>closed '+q.long+'/'+q.short+'</span>'
