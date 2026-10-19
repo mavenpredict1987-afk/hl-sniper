@@ -178,6 +178,7 @@ class Bot:
                 "positions": [p.__dict__ for p in self.pairs.positions],
                 "closed": list(self.pairs.closed),
                 "stats": dict(self.pairs.stats),
+                "credited": self.pairs.credited,
                 "last_rebalance": self.pairs.last_rebalance,
             },
             "consec_losses": self.consec_losses,
@@ -251,6 +252,8 @@ class Bot:
                 continue
         self.pairs.closed = list(pair_state.get("closed") or [])
         self.pairs.stats.update(pair_state.get("stats") or {})
+        self.pairs.credited = float(pair_state.get("credited", 0.0))
+        self.pairs.reconcile_cash()
         self.pairs.last_rebalance = float(pair_state.get("last_rebalance", 0.0))
         self.equity_history = [list(x) for x in (data.get("equity_history") or [])]
         self.halted = bool(data.get("halted", False))
@@ -301,7 +304,10 @@ class Bot:
         for p in self.positions.values():
             px = self.last_prices.get(p.symbol, p.entry)
             unreal += (px - p.entry) * p.size if p.direction == "long" else (p.entry - px) * p.size
-        self.equity = self.cash + unreal
+        # Pairs are open exposure too, so their swing belongs in equity and in
+        # the drawdown that gates the bot. Leaving it out understated both.
+        pairs_unreal = self.pairs.unrealized() if getattr(self, "pairs", None) else 0.0
+        self.equity = self.cash + unreal + pairs_unreal
         self.peak = max(self.peak, self.equity)
 
     def kelly_risk(self):

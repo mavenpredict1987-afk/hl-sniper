@@ -48,6 +48,7 @@ class FakeBot:
         self.active_symbols = list(returns)
         self.last_prices = {s: 100.0 * (1.0 + r) for s, r in returns.items()}
         self.equity = equity
+        self.cash = equity
         self.events = []
 
     def _event(self, msg):
@@ -184,6 +185,37 @@ for key in ("enabled", "trades", "winrate", "pnl", "unrealized", "open",
 check("the report carries the parameters",
       stats["lookback_h"] == config.PAIRS_LOOKBACK_H and stats["hold_h"] == config.PAIRS_HOLD_H)
 with_config(**prev)
+
+# --- 7. realised PnL reaches the bot's cash -------------------------------
+# The module used to keep its own scoreboard: a pair could win $50 and the
+# account's capital never moved, which made the frozen 5% drawdown hypothesis
+# unmeasurable.
+bota = FakeBot(RETURNS)
+moda = PairsModule(bota)
+moda._rebalance(1000.0)
+start_cash = bota.cash
+for p in list(moda.positions):
+    bota.last_prices[p.long_sym] = p.long_entry * 1.05
+    bota.last_prices[p.short_sym] = p.short_entry * 0.95
+moda._close_due(1000.0 + 50 * 3600)
+check("closing pairs moves the bot's cash", abs(bota.cash - start_cash) > 1.0,
+      (start_cash, bota.cash))
+check("the cash move equals the booked PnL",
+      abs((bota.cash - start_cash) - moda.stats["pnl"]) < 1e-6,
+      (bota.cash - start_cash, moda.stats["pnl"]))
+check("credited tracks the booked PnL",
+      abs(moda.credited - moda.stats["pnl"]) < 1e-9, moda.credited)
+
+# A state file from an older build has stats["pnl"] but no "credited" key.
+botb = FakeBot(RETURNS, equity=5000.0)
+modb = PairsModule(botb)
+modb.stats["pnl"] = 8.0
+modb.credited = 0.0
+gap = modb.reconcile_cash()
+check("a legacy state credits its whole PnL once", abs(botb.cash - 5008.0) < 1e-9, botb.cash)
+check("the gap is what was missing", abs(gap - 8.0) < 1e-9, gap)
+check("reconciling twice does nothing", abs(modb.reconcile_cash()) < 1e-9)
+check("and the cash is unchanged the second time", abs(botb.cash - 5008.0) < 1e-9, botb.cash)
 
 print()
 if failures:

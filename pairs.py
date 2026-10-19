@@ -53,6 +53,11 @@ class PairsModule:
         self.positions: List[PairPosition] = []
         self.closed: List[dict] = []
         self.stats = {"trades": 0, "wins": 0, "pnl": 0.0, "legs": 0}
+        # How much of stats["pnl"] has actually been added to the bot's cash.
+        # Kept apart from stats["pnl"] so a restart can credit whatever was
+        # booked while the bot was down, and so a state file written by an older
+        # build (no "credited" key at all) is reconciled instead of lost.
+        self.credited = 0.0
         self.last_rebalance = 0.0
         self.last_ranking: List[dict] = []
         self.history: List[float] = []
@@ -174,6 +179,14 @@ class PairsModule:
         self.stats["trades"] += 1
         self.stats["legs"] += 2
         self.stats["pnl"] += net
+        # A pair never reserved cash when it opened, so the whole round trip -
+        # fees included - is booked here. Until this line existed the pairs
+        # module kept its own scoreboard and the bot's equity never moved, which
+        # made the frozen experiment impossible to measure against its 5% draw-
+        # down hypothesis: the strategy could win or lose and the headline
+        # capital stayed exactly where it was.
+        self.bot.cash += net
+        self.credited += net
         if net > 0:
             self.stats["wins"] += 1
         self.closed.append({
@@ -187,6 +200,21 @@ class PairsModule:
             pos.long_sym, pos.short_sym, net))
         logger.info("PAIRS close %s/%s: $%+.2f", pos.long_sym, pos.short_sym, net)
         return True
+
+    def reconcile_cash(self):
+        """Credit any realised pair PnL the cash never received.
+
+        Runs after a restore. A state file written before pairs booked into cash
+        carries a non-zero stats["pnl"] with no "credited" key, so the whole
+        balance is credited once; afterwards the two agree and this is a no-op.
+        """
+        gap = self.stats["pnl"] - self.credited
+        if abs(gap) > 1e-9:
+            self.bot.cash += gap
+            self.credited = self.stats["pnl"]
+            logger.info("PAIRS reconciled $%+.2f of realised PnL into cash", gap)
+            return gap
+        return 0.0
 
     # ---------- reporting ----------
     def _pair_pnl(self, pos):
