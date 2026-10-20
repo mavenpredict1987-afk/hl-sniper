@@ -202,7 +202,11 @@ class RegimeLab:
 
     def load(self):
         try:
-            data = state_store.load(self.path())
+            # state_store.load returns (snapshot, source_path). Reading it as a
+            # snapshot made every check below fail on a tuple, so the lab
+            # silently started empty on every restart: open trades were
+            # re-opened and the closed sample was overwritten.
+            data, _ = state_store.load(self.path())
         except Exception as exc:
             self.last_error = "load: %s" % exc
             return

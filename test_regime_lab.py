@@ -18,6 +18,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+import config                                            # noqa: E402
 import regime_lab                                        # noqa: E402
 import state_store                                       # noqa: E402
 
@@ -145,24 +146,11 @@ check("stats reasons counted", s["reasons"].get("stop") == 1, s["reasons"])
 
 # 5. the module, offline
 tmpdir = fake_state_dir()
-state_store.state_dir = lambda: tmpdir
-state_store._atomic_write = state_store._atomic_write
-state_store.save = lambda data, path=None: _save(data, path)
-state_store.load = lambda path=None: _load(path)
-_MEMORY = {}
-
-
-def _save(data, path=None):
-    with open(path or os.path.join(tmpdir, "x.json"), "w", encoding="utf-8") as fh:
-        json.dump(data, fh)
-
-
-def _load(path=None):
-    try:
-        with open(path or os.path.join(tmpdir, "x.json"), encoding="utf-8") as fh:
-            return json.load(fh)
-    except Exception:
-        return None
+# The real store, pointed at a throwaway directory. Stubbing save/load here is
+# exactly how the lab shipped a restore path that never ran: the stub returned
+# the snapshot while the real load() returns (snapshot, path), so the test
+# proved a contract the bot did not have.
+config.STATE_DIR = tmpdir
 
 
 regime_bars = trending_bars(turb_after=400)      # trend + turbulence, persistent
