@@ -240,11 +240,14 @@ class RegimeLab:
             return []
 
     def _journal(self, action, reason, **data):
+        """One entry per arm and coin: the journal dedupes on the key, so a bare
+        action would collapse three simultaneous opens into one."""
         journal = getattr(self.bot, "journal", None)
         if journal is None:
             return
+        key = "%s:%s:%s" % (action, data.get("arm", "-"), data.get("coin", "-"))
         try:
-            journal.add("lab", action, reason, key=action, **data)
+            journal.add("lab", action, reason, key=key, **data)
         except Exception:
             pass
 

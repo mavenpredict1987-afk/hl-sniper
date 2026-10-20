@@ -291,6 +291,42 @@ except Exception as exc:
     check("empty candles do not raise", False, exc)
 check("no phase without candles", lab3.state["phase"] is None)
 
+# 10. the journal must see each arm and coin separately: it dedupes on the key,
+# so a bare action collapses three simultaneous opens into one entry.
+class FakeJournal:
+    def __init__(self):
+        self.entries = []
+
+    def add(self, module, action, reason, symbol=None, key=None, **data):
+        self.entries.append({"module": module, "action": action, "key": key, "data": data})
+
+    def keys(self):
+        return [e["key"] for e in self.entries]
+
+
+class FakeBot:
+    def __init__(self):
+        self.journal = FakeJournal()
+
+
+now[0] += 3 * HOUR
+try:
+    os.remove(os.path.join(tmpdir, regime_lab.STATE_FILE))   # a clean lab
+except OSError:
+    pass
+for coin in ("ETH", "SOL", "AVAX"):      # the crash above broke the uptrend
+    book[coin] = trending_bars(n=220, start=50.0)
+jbot = FakeBot()
+jlab = regime_lab.RegimeLab(bot=jbot, fetch=fake_fetch, clock=lambda: now[0])
+jlab.universe = ["ETH", "SOL", "AVAX"]
+jlab.refresh()
+opens = [e for e in jbot.journal.entries if e["action"] == "open"]
+check("journal records the opens", len(opens) >= 3, len(opens))
+check("journal keys are unique per arm and coin",
+      len(jbot.journal.keys()) == len(set(jbot.journal.keys())),
+      jbot.journal.keys())
+check("journal module is lab", all(e["module"] == "lab" for e in jbot.journal.entries))
+
 status = lab.status()
 check("status says paper only", "no orders" in status["penalty"], status["penalty"])
 check("status exposes all three arms", set(status["arms"]) == set(regime_lab.ARMS))
