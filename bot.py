@@ -283,6 +283,8 @@ class Bot:
             except TypeError:
                 continue
         self.trades = list(data.get("trades") or [])
+        # Old snapshots hold "HH:MM:SS | text" strings; new ones hold
+        # {"ts", "msg"}. Keeping both forms means an upgrade never drops events.
         self.events = list(data.get("events") or [])
         self.win_count = int(data.get("win_count", 0))
         self.loss_count = int(data.get("loss_count", 0))
@@ -351,8 +353,11 @@ class Bot:
             logger.warning("state save failed: %s", exc)
 
     def _event(self, msg):
-        line = "%s | %s" % (time.strftime("%H:%M:%S"), msg)
-        self.events.append(line)
+        # Stored with an epoch, not a pre-rendered clock: the server runs in UTC
+        # while the phone is on MSK, and a UTC "02:45" next to a local "06:05"
+        # reads like a three-hour gap that never happened. Old entries are plain
+        # strings and are left alone, so a restored state never loses history.
+        self.events.append({"ts": round(time.time(), 1), "msg": msg})
         if len(self.events) > 50:
             self.events = self.events[-50:]
         logger.info(msg)

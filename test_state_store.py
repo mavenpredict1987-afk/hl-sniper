@@ -53,7 +53,24 @@ check("bot equity history restored", len(bot.equity_history) == 1440)
 check("bot sniper stats restored", bot.sniper.get_stats().get("total_snipes") == 3,
       bot.sniper.get_stats())
 check("restart counted", bot.restarts == 1, bot.restarts)
-check("resume event logged", any("resumed from" in e for e in bot.events), bot.events[-1:])
+# Events are {"ts","msg"} now, so the dashboard can render them in the phone's
+# clock instead of the server's UTC. Old snapshots still hold plain strings and
+# must keep working after an upgrade.
+def event_text(e):
+    if isinstance(e, dict):
+        return e.get("msg") or ""
+    return str(e)
+
+
+check("resume event logged", any("resumed from" in event_text(e) for e in bot.events),
+      bot.events[-1:])
+check("old string events survive the upgrade",
+      any(isinstance(e, str) for e in bot.events), bot.events[:1])
+bot._event("epoch probe")
+check("new events carry an epoch",
+      isinstance(bot.events[-1], dict) and "ts" in bot.events[-1], bot.events[-1])
+check("new events keep their text",
+      "epoch probe" in event_text(bot.events[-1]), bot.events[-1])
 
 # 3. save writes a snapshot and the next start prefers it over the seed
 bot.update_status()

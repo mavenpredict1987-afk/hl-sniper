@@ -219,6 +219,12 @@ function usd(x){ return (x>=0?'+':'')+'$'+fmt(Math.abs(x)); }
 function tm(ts){ var d=new Date(ts*1000); function p(n){return (n<10?'0':'')+n} return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
 function hm(sec){ sec=Math.floor(sec); var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60); if(h>0)return h+'h '+m+'m'; return m+'m '+Math.floor(sec%60)+'s'; }
 function inCell(p){ return !!p && p.trend==='trend' && p.vol==='turb'; }
+// The server runs in UTC, the phone does not. Everything time-based is shown
+// in the phone's own clock, computed from the epoch, so 02:45 never shows up
+// next to a local 06:05 and looks like a three-hour outage.
+function clock(ts){ try{ return new Date(Number(ts)*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}); }catch(e){ return ''; } }
+function when(e){ if(e&&typeof e==='object'&&e.ts!==undefined)return clock(e.ts); return (e&&e.time)?e.time:''; }
+function eventLine(e){ if(e&&typeof e==='object')return (e.ts!==undefined?clock(e.ts)+' | ':'')+(e.msg||''); return String(e); }
 function cls(x){ return x>0?'pos':(x<0?'neg':'neu'); }
 
 // What the bot knew when it opened the position, as opposed to what the chart
@@ -443,7 +449,7 @@ function render(s){
   var ev=s.events||[];
   document.getElementById('ev-count').textContent=ev.length+' events';
   var eh='';
-  ev.forEach(function(e){ eh+='<div class="ev">'+e+'</div>'; });
+  ev.forEach(function(e){ eh+='<div class="ev">'+eventLine(e)+'</div>'; });
   document.getElementById('events').innerHTML=eh||'<div class="empty">no events yet</div>';
 
   // decision journal, newest first: the numbers behind each decision
@@ -462,7 +468,7 @@ function render(s){
     Object.keys(d).slice(0,5).forEach(function(k){
       bits.push(k+' '+d[k]);
     });
-    jh+='<div class="ev"><span><b>'+(e.time||'')+'</b> '+(e.symbol||'-')+
+    jh+='<div class="ev"><span><b>'+when(e)+'</b> '+(e.symbol||'-')+
       ' <span style="color:var(--dim)">'+e.module+'.'+e.action+'</span> '+e.reason+
       (bits.length?' <span style="color:var(--dim)">['+bits.join(', ')+']</span>':'')+
       '</span></div>';
