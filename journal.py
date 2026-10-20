@@ -64,15 +64,13 @@ class Journal:
         now = time.time()
         window = self.dedupe_sec if dedupe is None else dedupe
         dedupe_key = key if key is not None else reason
-        full_key = (module, action, symbol, dedupe_key)
+        full_key = (module, action, symbol or None, dedupe_key)
         last = self._last.get(full_key)
         if window and last is not None and now - last < window:
             self.dropped += 1
             return None
         self._last[full_key] = now
-        if len(self._last) > 4 * self.max_entries:
-            cutoff = now - max(window or 0.0, self.dedupe_sec * 2.0)
-            self._last = {k: v for k, v in self._last.items() if v >= cutoff}
+        self._prune(now, window)
         self.seq += 1
         entry = {
             "seq": self.seq,
@@ -82,6 +80,10 @@ class Journal:
             "action": action,
             "reason": reason,
         }
+        if key is not None:
+            # The dedupe key, when it differs from the reason. Kept so a restart
+            # can rebuild the index and not log the same decision twice.
+            entry["k"] = key
         if symbol:
             entry["symbol"] = symbol
         if data:
@@ -91,6 +93,15 @@ class Journal:
         if len(self.entries) > self.max_entries:
             self.entries = self.entries[-self.max_entries:]
         return entry
+
+    def _prune(self, now, window=None):
+        """Drop dedupe timestamps that can no longer suppress anything."""
+        if len(self._last) <= 4 * self.max_entries:
+            return
+        span = max((self.dedupe_sec if window is None else window) or 0.0,
+                   self.dedupe_sec * 2.0)
+        cutoff = now - span
+        self._last = {k: v for k, v in self._last.items() if v >= cutoff}
 
     def recent(self, n=25):
         return list(reversed(self.entries[-n:]))
@@ -121,3 +132,17 @@ class Journal:
             self.dropped = int(data.get("dropped") or 0)
         except (TypeError, ValueError):
             self.dropped = 0
+        # Rebuild the dedupe index from the restored entries. Without this every
+        # restart starts with an empty index, so the decision the bot re-derives
+        # in its first loop - a pair it just rebalanced, a config it just
+        # fingerprinted - lands in the journal a second time, and the count of
+        # how many times something happened becomes a count of restarts.
+        self._last = {}
+        for e in self.entries:
+            ts = e.get("ts")
+            if not isinstance(ts, (int, float)):
+                continue
+            dedupe_key = e.get("k") if e.get("k") is not None else e.get("reason")
+            self._last[(e.get("module"), e.get("action"),
+                        e.get("symbol") or None, dedupe_key)] = float(ts)
+        self._prune(time.time())

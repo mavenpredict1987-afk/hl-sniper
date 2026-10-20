@@ -120,6 +120,21 @@ check("round trip keeps dropped", dst.dropped == src.dropped)
 check("round trip keeps the data payload",
       dst.entries[-1]["data"]["pnl"] == 1.5, dst.entries[-1].get("data"))
 
+# 11b. the dedupe index survives the round trip, so a restart does not double log
+check("repeat after restore is suppressed",
+      dst.add("pairs", "close", "long A / short B", symbol="A") is None)
+check("restored suppression counted", dst.dropped == 1, dst.dropped)
+check("a decision the restore did not see still lands",
+      dst.add("pairs", "open", "long C / short D", symbol="C") is not None)
+# and a key that differs from the reason is rebuilt too
+srck = journal.Journal(max_entries=10, dedupe_sec=60.0)
+srck.add("sniper", "skip", "book $901 against $4000 needed", symbol="Z", key="thin")
+dstk = journal.Journal(max_entries=10, dedupe_sec=60.0)
+dstk.from_state(srck.to_state())
+check("stable key survives restore",
+      dstk.add("sniper", "skip", "book $1234 against $4000 needed", symbol="Z",
+               key="thin") is None)
+
 # 12. restore tolerates a state file written before the journal existed
 for bad in (None, {}, [], "garbage", {"entries": "nope"}, {"entries": [1, 2, {}]}):
     jbad = journal.Journal(max_entries=10, dedupe_sec=60.0)
