@@ -22,6 +22,7 @@ import state_store
 import universe
 import journal
 import pairs as pairs_module
+import regime_lab
 
 
 @dataclass
@@ -76,6 +77,9 @@ class Bot:
         self.sniper = SniperModule()
         self.journal = journal.Journal()
         self.pairs = pairs_module.PairsModule(self)
+        # Paper-only regime lab: no orders, no cash, no equity. Its whole job is
+        # to accrue forward evidence for a rule the backtest could not settle.
+        self.lab = regime_lab.RegimeLab(self)
         self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
         self.restarts = 0
         self.last_save_ts = 0.0
@@ -98,6 +102,7 @@ class Bot:
     CONFIG_KEYS = (
         "PAIRS_ENABLED", "PAIRS_LOOKBACK_H", "PAIRS_HOLD_H", "PAIRS_N",
         "PAIRS_EXPOSURE", "SNIPER_ENABLED", "SHORTS_ENABLED", "PARTIAL_RATIO",
+        "PAPER_LAB_ENABLED", "PAPER_LAB_SEC",
         "TAKER_FEE", "SLIPPAGE", "MAX_ENTRY_THRESHOLD", "CONVERGENCE_THRESHOLD",
         "MAX_POSITIONS", "MAX_TOTAL_RISK_PCT", "MAX_DIRECTION_RISK_PCT",
         "MAX_RISK_PER_TRADE", "KELLY_FRACTION", "ATR_STOP_MULT", "ATR_TARGET_MULT",
@@ -891,6 +896,7 @@ class Bot:
             "benched": self.benched_symbols(),
             "sniper_enabled": config.SNIPER_ENABLED,
             "pairs": self.pairs.get_stats(),
+            "lab": self.lab.status(),
             "config": getattr(self, "config_snapshot", None),
             "journal": self.journal.recent(30),
             "journal_counts": self.journal.counts(),
@@ -924,6 +930,7 @@ class Bot:
                         self.last_prices[sym] = mids[sym]
                 self.manage_positions()
                 self.pairs.on_cycle()
+                self.lab.on_tick()
                 if config.SNIPER_ENABLED and self._candle_window_open():
                     self._scan_candles(self.client.meta_and_ctxs())
                 self.update_status()

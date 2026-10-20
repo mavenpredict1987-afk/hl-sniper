@@ -195,6 +195,14 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
   </div></div></div>
 </div>
 
+<div class="acc">
+  <div class="acc-head" onclick="toggle('acc-lab')"><span class="acc-ico">&#9878;</span>Regime lab<span class="acc-sub" id="lab-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-body" id="acc-lab"><div class="acc-inner"><div style="padding-top:10px">
+    <div class="note">Paper only: no orders, no cash, no equity. Three arms run on the same hour so the regime filter can be judged against no filter, which the backtest could not settle.</div>
+    <div id="lab"></div>
+  </div></div></div>
+</div>
+
 <div class="upd" style="margin-top:14px">auto-refresh 5s - hl-sniper v1.2</div>
 
 <script>
@@ -210,6 +218,7 @@ function fmt(x,d){ if(x===undefined||x===null)return '-'; d=(d===undefined)?2:d;
 function usd(x){ return (x>=0?'+':'')+'$'+fmt(Math.abs(x)); }
 function tm(ts){ var d=new Date(ts*1000); function p(n){return (n<10?'0':'')+n} return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
 function hm(sec){ sec=Math.floor(sec); var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60); if(h>0)return h+'h '+m+'m'; return m+'m '+Math.floor(sec%60)+'s'; }
+function inCell(p){ return !!p && p.trend==='trend' && p.vol==='turb'; }
 function cls(x){ return x>0?'pos':(x<0?'neg':'neu'); }
 
 // What the bot knew when it opened the position, as opposed to what the chart
@@ -459,6 +468,32 @@ function render(s){
       '</span></div>';
   });
   document.getElementById('journal').innerHTML=jh||'<div class="empty">journal is empty</div>';
+
+  // paper regime lab: three arms, one hour, no money involved
+  var lab=s.lab||null;
+  if(lab){
+    var ph=lab.phase||{}, arms=lab.arms||{}, ah='';
+    document.getElementById('lab-sub').textContent=
+      (lab.enabled?'on':'off')+' / '+(ph.trend||'-')+'/'+(ph.vol||'-')+
+      ' / '+fmt(lab.hours_seen,0)+'h';
+    ah+='<div class="cfg" style="margin-bottom:8px">'+
+      pchip('phase '+(ph.trend||'-')+'/'+(ph.vol||'-'), inCell(ph)?'pos':'') +
+      pchip('ER '+(ph.er===undefined?'-':ph.er)) +
+      pchip('ATR% '+(ph.atr_pct===undefined?'-':ph.atr_pct)) +
+      pchip('pct '+(ph.pct===undefined?'-':ph.pct)) +
+      pchip('hours '+fmt(lab.hours_seen,0)) +
+      pchip('age '+(lab.age_sec===null?'-':hm(lab.age_sec)))+'</div>';
+    ['cell','control','cell_all'].forEach(function(a){
+      var st=arms[a]||{}, open=(lab.open&&lab.open[a])||[];
+      ah+='<div class="ev"><span><b>'+a+'</b> n '+fmt(st.n,0)+
+        ' mean '+fmt(st.mean_pct,3)+'% PF '+(st.pf===null||st.pf===undefined?'-':fmt(st.pf,2))+
+        ' t '+fmt(st.t,2)+' wins '+fmt(st.wins_pct,1)+'%'+
+        ' <span style="color:var(--dim)">open '+(open.length?open.map(function(p){return p.coin}).join(', '):'none')+'</span></span></div>';
+    });
+    if(lab.last_error) ah+='<div class="ev"><span style="color:var(--neg)">'+lab.last_error+'</span></div>';
+    document.getElementById('lab').innerHTML=ah;
+  }
+
 }
 
 function load(){

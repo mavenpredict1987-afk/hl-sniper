@@ -77,6 +77,21 @@ PAIRS_HOLD_H = int(os.getenv("PAIRS_HOLD_H", "48"))
 PAIRS_N = int(os.getenv("PAIRS_N", "3"))
 PAIRS_EXPOSURE = float(os.getenv("PAIRS_EXPOSURE", "0.20"))
 
+# Paper-only regime laboratory. Pure instrumentation: it opens no orders, holds
+# no money and cannot touch cash, equity or real positions. It exists because
+# hourly history on this venue stops at about 210 days (RESEARCH_LOG.md #13), so
+# there is no out-of-sample data and forward measurement is the only way to find
+# out whether a rule holds. Three arms run at once: the cell his paper_lab
+# claims (+0.575%/trade, t 1.50), a control with no regime filter, and an
+# uncapped cell arm for signal-level statistics.
+PAPER_LAB_ENABLED = os.getenv("PAPER_LAB_ENABLED", "1").strip().lower() not in (
+    "0", "false", "no")
+PAPER_LAB_SEC = float(os.getenv("PAPER_LAB_SEC", "3600"))
+PAPER_LAB_REGIME_COIN = os.getenv("PAPER_LAB_REGIME_COIN", "BTC")
+PAPER_LAB_UNIVERSE = [s.strip() for s in os.getenv(
+    "PAPER_LAB_UNIVERSE",
+    "ETH,SOL,AVAX,ARB,AAVE,ADA,LINK,DOGE,SUI,NEAR,XRP").split(",") if s.strip()]
+
 # The sniper is OFF by default. On 52 coins over 208 days it returned +9.8%
 # while an equal-weight basket of the same coins returned about +29.5%, and its
 # two halves were -3.3% and +26.0%, so the positive number was one favourable

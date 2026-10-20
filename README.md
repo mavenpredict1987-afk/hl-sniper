@@ -10,6 +10,9 @@ Hyperliquid perps sniper bot. Paper mode by default.
 - indicators.py - EMA/ATR/ADX
 - api_client.py - Hyperliquid REST client
 - health_server.py + dashboard.html - web status page
+- pairs.py - the market-neutral pairs module (the only strategy that survived)
+- journal.py - decision log, capped and deduped, so a week is debuggable
+- regime_lab.py - paper-only regime laboratory: three arms, no orders, no money
 
 ## Deploy on Railway
 1. GitHub repo with all files in root.
