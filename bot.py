@@ -15,9 +15,10 @@ from levels import find_levels, breakout_confirmed
 from sniper import (SniperModule, generate_trend_signal, generate_volume_signal,
                     generate_orderbook_signal, generate_funding_signal)
 from health_server import start_health_server, HealthHandler
-from utils import setup_logging, send_telegram, money, price, logger
+from utils import setup_logging, send_telegram, money, price, logger, coverage_x
 import state_store
 import universe
+import journal
 import pairs as pairs_module
 
 
@@ -36,6 +37,9 @@ class Position:
     partial_done: bool = False
     realized_pnl: float = 0.0
     entry_fee: float = 0.0
+    # What the screen said when this was opened. Kept on the position so a trade
+    # can be explained later without re-reading a chart that has since moved.
+    context: dict = field(default_factory=dict)
     entry_time: float = field(default_factory=time.time)
 
 
@@ -68,6 +72,7 @@ class Bot:
         self.equity_history = []
         self.client = HLClient()
         self.sniper = SniperModule()
+        self.journal = journal.Journal()
         self.pairs = pairs_module.PairsModule(self)
         self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
         self.restarts = 0
@@ -186,6 +191,7 @@ class Bot:
             "last_prices": dict(self.last_prices),
             "last_candle_ts": dict(self.last_candle_ts),
             "equity_history": list(self.equity_history),
+            "journal": self.journal.to_state(),
             "halted": self.halted,
             "day_halt": self.day_halt,
             "day_stamp": self.day_stamp,
@@ -256,6 +262,7 @@ class Bot:
         self.pairs.reconcile_cash()
         self.pairs.last_rebalance = float(pair_state.get("last_rebalance", 0.0))
         self.equity_history = [list(x) for x in (data.get("equity_history") or [])]
+        self.journal.from_state(data.get("journal"))
         self.halted = bool(data.get("halted", False))
         self.day_halt = bool(data.get("day_halt", False))
         self.day_stamp = data.get("day_stamp") or self._day_stamp()
@@ -438,7 +445,7 @@ class Bot:
         return size
 
     def open_position(self, symbol, direction, entry, atr_val, conv, book_slippage_pct,
-                      funding_hourly=0.0):
+                      funding_hourly=0.0, market_regime=None):
         if self.halted or self.day_halt:
             return False
         if len(self.positions) >= config.MAX_POSITIONS:
@@ -482,6 +489,43 @@ class Bot:
         pos.entry_fee = fee
         pos.initial_risk_usd = risk_dist * size
         self.positions[symbol] = pos
+        edge_pct = abs(target - fill) / fill * 100.0
+        cost_pct = self.cost_pct(funding_hourly, direction) * 100.0
+        cov = coverage_x(edge_pct, cost_pct)
+        pos.context = {
+            "score": round(conv["score"], 3),
+            "strength": conv.get("strength"),
+            "regime": market_regime,
+            # What sizing actually used. These two differ today: open_position
+            # has always passed the literal "normal" into position_size, so
+            # config.REGIME_SIZE_MULT is dead code. Recording both keeps the
+            # journal honest either way.
+            "sizing_regime": regime,
+            "atr_pct": round(atr_val / entry * 100.0, 3) if entry else None,
+            "funding_bp_h": round(funding_hourly * 10000.0, 3),
+            "slip_pct": round(book_slippage_pct, 3),
+            "edge_pct": round(edge_pct, 3),
+            "cost_pct": round(cost_pct, 3),
+            "coverage_x": round(cov, 2) if cov is not None else None,
+            "cluster": self.cluster_of(symbol),
+            "risk_usd": round(pos.initial_risk_usd, 2),
+            "risk_pct_equity": (round(100.0 * pos.initial_risk_usd / self.equity, 2)
+                                if self.equity else None),
+        }
+        self.journal.add(
+            "sniper", "open",
+            "%s %s score %.2f %s regime %s; target %.2f%% away, cost %.3f%%, "
+            "coverage %s; risk $%.2f (%.1f%% of equity); slip %.3f%%; "
+            "funding %+.3f bp/h; atr %.2f%%; cluster %s" % (
+                direction.upper(), symbol, conv["score"], conv.get("strength", ""),
+                market_regime or "-",
+                edge_pct, cost_pct,
+                ("%.1fx" % cov) if cov is not None else "n/a",
+                pos.initial_risk_usd, pos.context["risk_pct_equity"] or 0.0,
+                book_slippage_pct, funding_hourly * 10000.0,
+                pos.context["atr_pct"] or 0.0, pos.context["cluster"]),
+            symbol=symbol, key=direction, score=round(conv["score"], 3),
+            edge_pct=round(edge_pct, 3), cost_pct=round(cost_pct, 3))
         self._event("OPEN %s %s @ %s size=%.4f stop=%s target=%s score=%.2f %s slip=%.3f%%" % (
             direction.upper(), symbol, price(fill), size, price(stop), price(target),
             conv["score"], conv["strength"], book_slippage_pct))
@@ -535,6 +579,18 @@ class Bot:
                             "partial_pnl": round(pos.realized_pnl, 2),
                             "reason": reason, "time": time.time()})
         self._event("CLOSE %s @ %s pnl=%s (%s)" % (symbol, money(fill), money(net), reason))
+        ctx = pos.context or {}
+        self.journal.add(
+            "sniper", "close",
+            "%s %s %s at %s after %.1fh: net $%+.2f (%+.2f%%), %.2fR; "
+            "opened at score %s, target %.2f%% away vs cost %.3f%% => coverage %s" % (
+                pos.direction.upper(), symbol, reason, money(fill),
+                (time.time() - pos.entry_time) / 3600.0, net,
+                100.0 * total / (pos.entry * (pos.initial_size or pos.size) or 1.0),
+                r_mult, ctx.get("score", "n/a"), ctx.get("edge_pct") or 0.0,
+                ctx.get("cost_pct") or 0.0,
+                ("%.1fx" % ctx["coverage_x"]) if ctx.get("coverage_x") is not None else "n/a"),
+            symbol=symbol, key=reason, pnl=round(net, 2), r=round(r_mult, 2))
         send_telegram("CLOSE %s pnl=%s (%s)" % (symbol, money(net), reason))
         self._save_state(force=True)
 
@@ -698,7 +754,8 @@ class Bot:
             self._event("SNIPER REJECT %s: %s" % (symbol, result.get("reason", "?")))
             return
         slip_pct = result["decision"]["slippage_pct"]
-        self.open_position(symbol, direction, last_close, a, conv, slip_pct, funding_hourly)
+        self.open_position(symbol, direction, last_close, a, conv, slip_pct,
+                           funding_hourly, market_regime=regime)
 
     def check_halts(self):
         dd = (self.peak - self.equity) / self.peak
@@ -788,6 +845,9 @@ class Bot:
             "benched": self.benched_symbols(),
             "sniper_enabled": config.SNIPER_ENABLED,
             "pairs": self.pairs.get_stats(),
+            "journal": self.journal.recent(30),
+            "journal_counts": self.journal.counts(),
+            "journal_dropped": self.journal.dropped,
             "events": list(reversed(self.events[-20:]))})
         HealthHandler.bot_status = self.status
         self._save_state()

@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 import config
+from utils import coverage_grade, coverage_x
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,50 @@ class PairPosition:
     due: float
     long_size: float = 0.0
     short_size: float = 0.0
+    # The numbers that were on the screen when the pair was opened: the return
+    # that ranked each leg, its volatility and its funding. Without them a
+    # closed pair is a bare PnL figure and the only way to explain it is to go
+    # and look at the chart again, which is how you fool yourself.
+    context: dict = field(default_factory=dict)
+
+
+def _n(x, digits=2):
+    """Format a number for a journal reason string, "n/a" when not measured."""
+    if x is None:
+        return "n/a"
+    try:
+        return ("%." + str(digits) + "f") % float(x)
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def _atr_pct(candles, period=14):
+    """Average true range as a fraction of the last close, or None.
+
+    None rather than 0.0 when the candles carry no high/low: a zero volatility
+    reading would silently rank as the safest coin in the universe.
+    """
+    if not candles or len(candles) < period + 1:
+        return None
+    trs = []
+    for i in range(1, len(candles)):
+        try:
+            high = float(candles[i]["h"])
+            low = float(candles[i]["l"])
+            prev = float(candles[i - 1]["c"])
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+        trs.append(max(high - low, abs(high - prev), abs(low - prev)))
+    if not trs:
+        return None
+    window = trs[-period:]
+    try:
+        last = float(candles[-1]["c"])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+    if last <= 0:
+        return None
+    return (sum(window) / len(window)) / last
 
 
 class PairsModule:
@@ -63,9 +108,50 @@ class PairsModule:
         self.history: List[float] = []
         self.last_error = ""
 
+    # ---------- instrumentation ----------
+    def _journal(self, action, reason, symbol=None, **data):
+        """Record a decision with the numbers behind it, if the bot keeps one."""
+        journal = getattr(self.bot, "journal", None)
+        if journal is None:
+            return None
+        try:
+            return journal.add("pairs", action, reason, symbol=symbol,
+                               key=action, **data)
+        except Exception as exc:                      # never block trading
+            logger.warning("journal failed: %s", exc)
+            return None
+
+    def round_trip_cost_pct(self):
+        """Cost of one pair round trip as a percentage of one leg's notional.
+
+        Four fills - open and close on both legs - each paying the taker fee and
+        the modelled slippage. This is the number the strategy has to beat, and
+        printing it next to the measured edge is the whole point: a 0.15% edge
+        against a 0.23% cost is a losing strategy that a backtest can present as
+        profitable if the cost line is left out.
+        """
+        return 4.0 * (config.TAKER_FEE + config.SLIPPAGE / 4.0) * 100.0
+
+    def coverage_ratio(self):
+        """Measured gross edge per closed pair divided by the round-trip cost.
+
+        None until there is at least one closed pair: an invented prior would
+        make the dashboard look confident about a number nobody measured.
+        """
+        gross = [float(c.get("long_ret") or 0.0) + float(c.get("short_ret") or 0.0)
+                 for c in self.closed]
+        if not gross:
+            return None
+        return coverage_x(sum(gross) / len(gross), self.round_trip_cost_pct())
+
     # ---------- data ----------
-    def _lookback_return(self, symbol, hours):
-        """Return over `hours` of hourly candles, or None if unavailable."""
+    def _leg_stats(self, symbol, hours):
+        """Return over `hours` plus the volatility that produced it.
+
+        Both come from one candle fetch. Ranking on return alone hides the fact
+        that the weakest coin is often the most violent one, and a pair of two
+        violent legs is not market-neutral in any useful sense.
+        """
         try:
             candles = self.bot.client.candles_recent(symbol, "1h", hours + 2)
         except Exception as exc:                     # network trouble is normal
@@ -80,18 +166,42 @@ class PairsModule:
             return None
         if first <= 0:
             return None
-        return last / first - 1.0
+        return {"symbol": symbol, "ret": last / first - 1.0,
+                "atr_pct": _atr_pct(candles),
+                "px": last}
+
+    def _market_meta(self):
+        """Funding and turnover per coin, or nothing if the venue is slow."""
+        try:
+            return self.bot.client.meta_and_ctxs() or {}
+        except Exception as exc:
+            self.last_error = "meta: %s" % exc
+            return {}
 
     def rank(self):
         """Coins ordered by their lookback return, weakest first."""
         rows = []
         for symbol in self.bot.active_symbols:
-            r = self._lookback_return(symbol, config.PAIRS_LOOKBACK_H)
-            if r is None:
+            row = self._leg_stats(symbol, config.PAIRS_LOOKBACK_H)
+            if row is None:
                 continue
-            rows.append({"symbol": symbol, "ret": r})
+            rows.append(row)
         rows.sort(key=lambda row: row["ret"])
         return rows
+
+    def _leg_context(self, row, meta):
+        """The handful of numbers worth keeping about one leg."""
+        m = meta.get(row["symbol"]) or {}
+        funding = m.get("funding")
+        return {
+            "ret_pct": round(row["ret"] * 100.0, 2),
+            "atr_pct": (round(row["atr_pct"] * 100.0, 2)
+                        if row.get("atr_pct") is not None else None),
+            "funding_bp_h": (round(float(funding) * 10000.0, 3)
+                             if isinstance(funding, (int, float)) else None),
+            "vol_usd": (round(float(m["day_volume_usd"]), 0)
+                        if isinstance(m.get("day_volume_usd"), (int, float)) else None),
+        }
 
     # ---------- cycle ----------
     def on_cycle(self):
@@ -131,19 +241,44 @@ class PairsModule:
         # weakest first. Long the bottom n, short the top n.
         weakest = rows[:n]
         strongest = rows[-n:]
+        meta = self._market_meta()
+        ranks = {row["symbol"]: i + 1 for i, row in enumerate(rows)}
 
         for weak, strong in zip(weakest, reversed(strongest)):
             lp = self.bot.last_prices.get(weak["symbol"])
             sp = self.bot.last_prices.get(strong["symbol"])
             if not lp or not sp or lp <= 0 or sp <= 0:
                 continue
+            long_ctx = self._leg_context(weak, meta)
+            short_ctx = self._leg_context(strong, meta)
+            context = {
+                "long": long_ctx,
+                "short": short_ctx,
+                "long_rank": ranks.get(weak["symbol"]),
+                "short_rank": ranks.get(strong["symbol"]),
+                "universe": len(rows),
+                "horizon_h": config.PAIRS_LOOKBACK_H,
+                "cycle_h": config.PAIRS_HOLD_H,
+            }
             self.positions.append(PairPosition(
                 long_sym=weak["symbol"], short_sym=strong["symbol"],
                 long_entry=lp, short_entry=sp, notional=per_leg,
                 opened=now, due=now + config.PAIRS_HOLD_H * 3600,
-                long_size=per_leg / lp, short_size=per_leg / sp))
+                long_size=per_leg / lp, short_size=per_leg / sp,
+                context=context))
             self.bot._event("PAIRS open: long %s / short %s ($%.0f per leg)" % (
                 weak["symbol"], strong["symbol"], per_leg))
+            self._journal(
+                "open",
+                "long %s %+.1f%% (rank %d) / short %s %+.1f%% (rank %d) of %d; "
+                "atr %s/%s pct; funding %s/%s bp/h; $%.0f per leg" % (
+                    weak["symbol"], long_ctx["ret_pct"], context["long_rank"],
+                    strong["symbol"], short_ctx["ret_pct"], context["short_rank"],
+                    len(rows), _n(long_ctx["atr_pct"]), _n(short_ctx["atr_pct"]),
+                    _n(long_ctx["funding_bp_h"]), _n(short_ctx["funding_bp_h"]),
+                    per_leg),
+                symbol="%s/%s" % (weak["symbol"], strong["symbol"]),
+                coverage_x=self.coverage_ratio(), notional=per_leg)
         logger.info("PAIRS rebalance: %d pair(s) opened, %d ranked" % (
             len(self.positions), len(rows)))
         self.bot._save_state(force=True)
@@ -193,11 +328,22 @@ class PairsModule:
             "long": pos.long_sym, "short": pos.short_sym,
             "long_ret": round(long_ret * 100, 2), "short_ret": round(short_ret * 100, 2),
             "pnl": round(net, 2), "opened": pos.opened, "closed": now,
-            "hours": round((now - pos.opened) / 3600.0, 1)})
+            "hours": round((now - pos.opened) / 3600.0, 1),
+            "context": pos.context or {}})
         if len(self.closed) > 200:
             self.closed = self.closed[-200:]
         self.bot._event("PAIRS close: %s/%s pnl $%+.2f" % (
             pos.long_sym, pos.short_sym, net))
+        gross_pct = (long_ret + short_ret) * 100.0
+        self._journal(
+            "close",
+            "long %s %+.2f%% / short %s %+.2f%% = %+.2f%% gross, cost %.2f%%, "
+            "net $%+.2f after %.0fh" % (
+                pos.long_sym, long_ret * 100.0, pos.short_sym, short_ret * 100.0,
+                gross_pct, self.round_trip_cost_pct(), net,
+                (now - pos.opened) / 3600.0),
+            symbol="%s/%s" % (pos.long_sym, pos.short_sym),
+            pnl=net, gross_pct=gross_pct, coverage_x=self.coverage_ratio())
         logger.info("PAIRS close %s/%s: $%+.2f", pos.long_sym, pos.short_sym, net)
         return True
 
@@ -238,6 +384,11 @@ class PairsModule:
 
     def get_stats(self):
         trades = self.stats["trades"]
+        cost_pct = self.round_trip_cost_pct()
+        gross = [float(c.get("long_ret") or 0.0) + float(c.get("short_ret") or 0.0)
+                 for c in self.closed]
+        gross_avg = (sum(gross) / len(gross)) if gross else None
+        ratio = self.coverage_ratio()
         return {
             "enabled": config.PAIRS_ENABLED,
             "trades": trades,
@@ -252,6 +403,17 @@ class PairsModule:
             "exposure": config.PAIRS_EXPOSURE,
             "next_rebalance_h": self.next_rebalance_hours(),
             "last_error": self.last_error,
+            # Does the measured gross edge pay for the round trip, and by how
+            # much? Reported, never acted on: changing behaviour mid-experiment
+            # would invalidate the frozen comparison.
+            "costs": {
+                "cost_pct": round(cost_pct, 3),
+                "gross_avg_pct": round(gross_avg, 3) if gross_avg is not None else None,
+                "net_avg_pct": (round(gross_avg - cost_pct, 3)
+                                if gross_avg is not None else None),
+                "coverage_x": round(ratio, 2) if ratio is not None else None,
+                "grade": coverage_grade(ratio),
+                "samples": len(gross)},
             "ranking": [{"symbol": r["symbol"], "ret_pct": round(r["ret"] * 100, 2)}
                         for r in self.last_ranking[:5]] +
                        [{"symbol": r["symbol"], "ret_pct": round(r["ret"] * 100, 2)}
@@ -263,7 +425,8 @@ class PairsModule:
                             "long_px": round(self.bot.last_prices.get(p.long_sym) or 0, 6),
                             "short_px": round(self.bot.last_prices.get(p.short_sym) or 0, 6),
                             "pnl": round(self._pair_pnl(p), 2),
-                            "hours": round((time.time() - p.opened) / 3600.0, 1)}
+                            "hours": round((time.time() - p.opened) / 3600.0, 1),
+                            "context": p.context or {}}
                            for p in self.positions],
             "recent": list(reversed(self.closed[-10:])),
         }

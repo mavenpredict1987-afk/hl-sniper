@@ -44,3 +44,42 @@ def price(x):
     if a >= 0.01:
         return "%.5f" % x
     return "%.8f" % x
+
+
+COVERAGE_OK = 10.0
+COVERAGE_THIN = 3.0
+
+
+def coverage_x(expected_pct, cost_pct):
+    """How many times over the round trip pays for its own costs.
+
+    The number his dashboard prints as "cost coverage 20.0x", and the most
+    useful single ratio in the whole project. A strategy with a 0.15% edge and a
+    0.20% round trip loses money no matter how good the signal is, and the
+    backtest that showed +17% never says so out loud.
+
+    Both arguments are fractions (0.0015, not 1.5). Returns None when the cost
+    is unknown or zero, because "infinite coverage" would read as excellent when
+    it actually means "not measured".
+    """
+    try:
+        expected = float(expected_pct)
+        cost = float(cost_pct)
+    except (TypeError, ValueError):
+        return None
+    if cost <= 0 or expected is None:
+        return None
+    return expected / cost
+
+
+def coverage_grade(x):
+    """ok / thin / below_cost / unknown, for a display that cannot mislead."""
+    if x is None:
+        return "unknown"
+    if x >= COVERAGE_OK:
+        return "ok"
+    if x >= COVERAGE_THIN:
+        return "thin"
+    if x >= 1.0:
+        return "thin"
+    return "below_cost"

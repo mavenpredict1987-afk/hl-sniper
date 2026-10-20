@@ -150,6 +150,7 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
 <div class="card">
   <div class="sec-cap">Pairs &mdash; market neutral</div>
   <div class="cfg" id="pairs-row"></div>
+  <div class="cfg" id="pairs-costs" style="margin-top:6px"></div>
   <div id="pairs-open" style="margin-top:8px"></div>
   <div class="note" id="pairs-note"></div>
 </div>
@@ -186,6 +187,14 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
   </div></div></div>
 </div>
 
+<div class="acc">
+  <div class="acc-head" onclick="toggle('acc-jr')"><span class="acc-ico">&#9998;</span>Decision journal<span class="acc-sub" id="jr-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-body" id="acc-jr"><div class="acc-inner"><div style="padding-top:10px">
+    <div class="note">Every entry and exit with the numbers that justified it, so a trade can be explained months later.</div>
+    <div id="journal"></div>
+  </div></div></div>
+</div>
+
 <div class="upd" style="margin-top:14px">auto-refresh 5s - hl-sniper v1.2</div>
 
 <script>
@@ -202,6 +211,22 @@ function usd(x){ return (x>=0?'+':'')+'$'+fmt(Math.abs(x)); }
 function tm(ts){ var d=new Date(ts*1000); function p(n){return (n<10?'0':'')+n} return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
 function hm(sec){ sec=Math.floor(sec); var h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60); if(h>0)return h+'h '+m+'m'; return m+'m '+Math.floor(sec%60)+'s'; }
 function cls(x){ return x>0?'pos':(x<0?'neg':'neu'); }
+
+// What the bot knew when it opened the position, as opposed to what the chart
+// says now. Stored with the position so it survives a restart.
+function posCtx(c){
+  if(!c)return '';
+  var bits=[];
+  if(c.score!==undefined&&c.score!==null) bits.push('score '+fmt(c.score,3));
+  if(c.strength) bits.push(c.strength);
+  if(c.regime) bits.push('regime '+c.regime);
+  if(c.edge_pct!==undefined&&c.edge_pct!==null) bits.push('edge '+fmt(c.edge_pct)+'%');
+  if(c.cost_pct!==undefined&&c.cost_pct!==null) bits.push('cost '+fmt(c.cost_pct)+'%');
+  if(c.coverage_x!==undefined&&c.coverage_x!==null) bits.push('cover '+fmt(c.coverage_x,1)+'x');
+  if(c.cluster) bits.push('cluster '+c.cluster);
+  if(!bits.length)return '';
+  return '<div style="opacity:.6;font-size:11px;margin-top:6px">'+bits.join(' &middot; ')+'</div>';
+}
 
 function spark(data){
   var w=600,h=90;
@@ -287,11 +312,40 @@ function render(s){
   prow.push(pchip((pr.n_pairs||0)+' pairs, '+Math.round((pr.exposure||0)*100)+'%'));
   if(pr.enabled) prow.push(pchip('next rebalance in '+(pr.next_rebalance_h||0)+'h'));
   document.getElementById('pairs-row').innerHTML=prow.join('');
+  // Cost coverage: does the average cycle earn more than the round trip costs?
+  // A strategy that is right on direction but wrong on costs still loses money,
+  // so the ratio matters more than the P&L number while the sample is small.
+  var pc=pr.costs||{};
+  var pcc=[];
+  pcc.push(pchip('cost '+fmt(pc.cost_pct)+'% / cycle'));
+  if(pc.samples){
+    pcc.push(pchip('gross avg '+fmt(pc.gross_avg_pct)+'%', pc.gross_avg_pct>0?'on':'warn'));
+    pcc.push(pchip('net avg '+fmt(pc.net_avg_pct)+'%', pc.net_avg_pct>0?'on':'warn'));
+    if(pc.coverage_x===null||pc.coverage_x===undefined){
+      pcc.push(pchip('coverage n/a'));
+    } else {
+      pcc.push(pchip('coverage '+fmt(pc.coverage_x,1)+'x ('+(pc.grade||'?')+')',
+        pc.grade==='ok'?'on':(pc.grade==='below_cost'?'warn':'')));
+    }
+    pcc.push(pchip(pc.samples+' cycles measured'));
+  } else {
+    pcc.push(pchip('no closed cycle yet'));
+  }
+  document.getElementById('pairs-costs').innerHTML=pcc.join('');
   var poh='';
   (pr.open_pairs||[]).forEach(function(q){
     var c=(q.pnl>=0)?'pos':'neg';
     poh+='<div class="ev"><span>long '+q.long+' @ '+q.long_entry+' &middot; short '+q.short+' @ '+q.short_entry+'</span>'
        +'<span class="'+c+'">'+(q.pnl>=0?'+':'')+'$'+fmt(q.pnl)+' &middot; '+q.hours+'h</span></div>';
+    // why this pair, captured at entry rather than reconstructed later
+    var qc=q.context||{}, bits=[];
+    if(qc.long_rank) bits.push('rank '+qc.long_rank+'/'+qc.short_rank+' of '+qc.universe);
+    if(qc.long&&qc.long.ret_pct!==undefined)
+      bits.push('7d ret '+fmt(qc.long.ret_pct)+'% / '+fmt(qc.short&&qc.short.ret_pct)+'%');
+    if(qc.long&&qc.long.atr_pct!==undefined) bits.push('atr '+fmt(qc.long.atr_pct)+'%');
+    if(qc.long&&qc.long.funding_bp_h!==undefined)
+      bits.push('funding '+fmt(qc.long.funding_bp_h,1)+' bp/h long');
+    if(bits.length) poh+='<div class="ev" style="opacity:.6;font-size:11px">'+bits.join(' &middot; ')+'</div>';
   });
   (pr.recent||[]).slice(0,4).forEach(function(q){
     poh+='<div class="ev"><span>closed '+q.long+'/'+q.short+'</span>'
@@ -351,7 +405,7 @@ function render(s){
       '<div><span class="k">Stop</span><span class="v neg">'+fmt(p.stop,p.stop<10?4:2)+'</span></div>'+
       '<div><span class="k">Target</span><span class="v pos">'+fmt(p.target,p.target<10?4:2)+'</span></div>'+
       '<div><span class="k">Unreal %</span><span class="v '+cls(unreal)+'">'+fmt(p.entry?unreal/(p.entry*p.size)*100:0)+'%</span></div>'+
-      '</div></div>';
+      '</div>'+posCtx(p.context)+'</div>';
   });
   document.getElementById('positions').innerHTML=ph2||'<div class="empty">no open positions</div>';
 
@@ -382,6 +436,29 @@ function render(s){
   var eh='';
   ev.forEach(function(e){ eh+='<div class="ev">'+e+'</div>'; });
   document.getElementById('events').innerHTML=eh||'<div class="empty">no events yet</div>';
+
+  // decision journal, newest first: the numbers behind each decision
+  var jr=s.journal||[], jc=s.journal_counts||{};
+  var jkeys=Object.keys(jc).sort();
+  document.getElementById('jr-sub').textContent=jr.length+' recent'+
+    (s.journal_dropped?' / '+s.journal_dropped+' deduped':'');
+  var jh='';
+  if(jkeys.length){
+    var jch=[];
+    jkeys.forEach(function(k){ jch.push(pchip(k+' '+jc[k])); });
+    jh+='<div class="cfg" style="margin-bottom:8px">'+jch.join('')+'</div>';
+  }
+  jr.forEach(function(e){
+    var d=e.data||{}, bits=[];
+    Object.keys(d).slice(0,5).forEach(function(k){
+      bits.push(k+' '+d[k]);
+    });
+    jh+='<div class="ev"><span><b>'+(e.time||'')+'</b> '+(e.symbol||'-')+
+      ' <span style="color:var(--dim)">'+e.module+'.'+e.action+'</span> '+e.reason+
+      (bits.length?' <span style="color:var(--dim)">['+bits.join(', ')+']</span>':'')+
+      '</span></div>';
+  });
+  document.getElementById('journal').innerHTML=jh||'<div class="empty">journal is empty</div>';
 }
 
 function load(){

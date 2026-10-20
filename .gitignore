@@ -9,3 +9,9 @@ bt_*.sh
 state.json
 universe.json
 .env
+
+# The friend's source, kept for reference only. Never committed: the repo is
+# public and his code (and any credentials in it) is not ours to publish.
+research/friend/
+research/*.pdf
+research/*REFERENCE*.txt
