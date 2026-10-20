@@ -509,7 +509,11 @@ class Bot:
         stop = entry - config.ATR_STOP_MULT * atr_val if direction == "long" else entry + config.ATR_STOP_MULT * atr_val
         target = entry + config.ATR_TARGET_MULT * atr_val if direction == "long" else entry - config.ATR_TARGET_MULT * atr_val
         risk_dist = abs(entry - stop)
-        regime = "normal"
+        # Sizing has to see the regime the signal was found in. Passing the
+        # literal "normal" made config.REGIME_SIZE_MULT dead code: a high
+        # volatility entry was risked exactly like a calm one. Unknown names
+        # fall back instead of silently losing the multiplier.
+        regime = market_regime if market_regime in config.REGIME_SIZE_MULT else "normal"
         size = self.position_size(entry, stop, conv["score"], regime, funding_hourly,
                                   direction, symbol)
         if size <= 0:
@@ -547,10 +551,10 @@ class Bot:
             "score": round(conv["score"], 3),
             "strength": conv.get("strength"),
             "regime": market_regime,
-            # What sizing actually used. These two differ today: open_position
-            # has always passed the literal "normal" into position_size, so
-            # config.REGIME_SIZE_MULT is dead code. Recording both keeps the
-            # journal honest either way.
+            # What sizing actually used. Before bug 50 these always differed:
+            # open_position passed the literal "normal" into position_size, so
+            # config.REGIME_SIZE_MULT never applied. Recording both keeps the
+            # journal able to prove which build produced the trade.
             "sizing_regime": regime,
             "atr_pct": round(atr_val / entry * 100.0, 3) if entry else None,
             "funding_bp_h": round(funding_hourly * 10000.0, 3),

@@ -153,6 +153,49 @@ check("calm regimes are unchanged",
       config.REGIME_FILTER_MULT.get("normal") == 1.0
       and config.REGIME_FILTER_MULT.get("low") == 1.0)
 
+# Bug 50: open_position used to pass the literal "normal" into position_size,
+# so REGIME_SIZE_MULT was dead code and a high-volatility trade was risked
+# exactly like a calm one. Sizing now uses the regime the signal was found in.
+bot = fresh()
+normal_size = bot.position_size(1000.0, 900.0, 0.60, "normal")
+high_size = bot.position_size(1000.0, 900.0, 0.60, "high")
+low_size = bot.position_size(1000.0, 900.0, 0.60, "low")
+check("high volatility is risked smaller", high_size < normal_size,
+      "%.6f vs %.6f" % (high_size, normal_size))
+check("calm volatility is risked larger", low_size > normal_size,
+      "%.6f vs %.6f" % (low_size, normal_size))
+check("the high multiplier is exactly applied",
+      abs(high_size / normal_size - config.REGIME_SIZE_MULT["high"]) < 1e-6,
+      high_size / normal_size)
+
+bot = fresh()
+conv = {"score": 0.60, "strength": "normal"}
+bot.open_position("ETH", "long", 1000.0, 10.0, conv, 0.01,
+                  funding_hourly=0.0, market_regime="high")
+pos = bot.positions.get("ETH")
+check("open_position sizes with the regime it was given", pos is not None, bot.positions)
+if pos is not None:
+    check("the journal records the sizing regime", pos.context["sizing_regime"] == "high",
+          pos.context["sizing_regime"])
+    check("the market regime is kept separately", pos.context["regime"] == "high",
+          pos.context["regime"])
+calm_bot = fresh()
+calm_bot.open_position("ETH", "long", 1000.0, 10.0, conv, 0.01,
+                       funding_hourly=0.0, market_regime="normal")
+calm_pos = calm_bot.positions.get("ETH")
+check("the same entry is smaller in high volatility",
+      calm_pos is not None and pos is not None and pos.size < calm_pos.size,
+      None if calm_pos is None else "%.6f vs %.6f" % (pos.size, calm_pos.size))
+
+bot = fresh()
+conv = {"score": 0.60, "strength": "normal"}
+bot.open_position("BTC", "long", 1000.0, 10.0, conv, 0.01,
+                  funding_hourly=0.0, market_regime="sideways")
+pos = bot.positions.get("BTC")
+check("an unknown regime falls back to normal",
+      pos is not None and pos.context["sizing_regime"] == "normal",
+      None if pos is None else pos.context["sizing_regime"])
+
 # --- 8. sniper stats keys and the bounded history window ------------------
 bot = fresh()
 sm = bot.sniper
