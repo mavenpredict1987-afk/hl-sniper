@@ -1,6 +1,8 @@
 import os
 import sys
 import time
+import json
+import hashlib
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -85,6 +87,50 @@ class Bot:
         setup_logging()
         self._load_universe()
         self._restore_state()
+        self.config_snapshot = self._config_snapshot()
+        self._record_config()
+
+    # Parameters that decide how the bot behaves, and therefore what a result
+    # means. They live in the Railway environment, which is mutable and leaves no
+    # trace, so a week of trades cannot otherwise be attributed to the settings
+    # that produced it. The pairs experiment runs until 2026-10-31; if a number
+    # changes mid-flight, this is how the two halves stay separable.
+    CONFIG_KEYS = (
+        "PAIRS_ENABLED", "PAIRS_LOOKBACK_H", "PAIRS_HOLD_H", "PAIRS_N",
+        "PAIRS_EXPOSURE", "SNIPER_ENABLED", "SHORTS_ENABLED", "PARTIAL_RATIO",
+        "TAKER_FEE", "SLIPPAGE", "MAX_ENTRY_THRESHOLD", "CONVERGENCE_THRESHOLD",
+        "MAX_POSITIONS", "MAX_TOTAL_RISK_PCT", "MAX_DIRECTION_RISK_PCT",
+        "MAX_RISK_PER_TRADE", "KELLY_FRACTION", "ATR_STOP_MULT", "ATR_TARGET_MULT",
+        "HALT_DD_PCT", "DAILY_STOP_PCT", "AUTO_BLACKLIST_STOPS",
+        "LIQUIDITY_MIN_USD", "LIQUIDITY_MAX_SHARE", "MIN_RR_AFTER_COSTS",
+    )
+
+    def _config_snapshot(self):
+        values = {}
+        for key in self.CONFIG_KEYS:
+            if hasattr(config, key):
+                val = getattr(config, key)
+                if isinstance(val, (int, float, str, bool)) or val is None:
+                    values[key] = val
+        blob = json.dumps(values, sort_keys=True, separators=(",", ":"))
+        return {"hash": hashlib.sha1(blob.encode()).hexdigest()[:8], "values": values}
+
+    def _record_config(self):
+        snap = self.config_snapshot
+        self.journal.add(
+            "config", "startup",
+            "%s %s; %d params; %s" % (
+                "resumed" if self.resumed else "cold start", snap["hash"],
+                len(snap["values"]),
+                ", ".join("%s=%s" % (k, snap["values"][k])
+                          for k in ("PAIRS_ENABLED", "PAIRS_N", "PAIRS_HOLD_H",
+                                    "PAIRS_EXPOSURE", "SNIPER_ENABLED",
+                                    "SHORTS_ENABLED", "TAKER_FEE", "SLIPPAGE")
+                          if k in snap["values"])),
+            key=snap["hash"], config_hash=snap["hash"], resumed=self.resumed)
+        self._event("config %s (%d params) %s" % (
+            snap["hash"], len(snap["values"]),
+            "resumed" if self.resumed else "cold start"))
 
     def _day_stamp(self):
         return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -845,6 +891,7 @@ class Bot:
             "benched": self.benched_symbols(),
             "sniper_enabled": config.SNIPER_ENABLED,
             "pairs": self.pairs.get_stats(),
+            "config": getattr(self, "config_snapshot", None),
             "journal": self.journal.recent(30),
             "journal_counts": self.journal.counts(),
             "journal_dropped": self.journal.dropped,
