@@ -183,6 +183,7 @@ class RegimeLab:
         self.clock = clock or time.time
         self.fetch = fetch or self._fetch_candles
         self.last_error = ""
+        self.restored = False
         self.state = self._blank()
         self.load()
 
@@ -207,6 +208,7 @@ class RegimeLab:
             return
         if not isinstance(data, dict):
             return
+        self.restored = True
         self.state["last_run"] = float(data.get("last_run") or 0.0)
         phase = data.get("phase")
         self.state["phase"] = phase if isinstance(phase, dict) else None
@@ -362,6 +364,20 @@ class RegimeLab:
 
     # ---- reporting
 
+    def state_info(self):
+        """Where the lab keeps its state, and whether that file is really there.
+
+        A restart that cannot read the file quietly forgets every open trade,
+        so the status reports the file itself, not just the numbers in memory.
+        """
+        path = self.path()
+        try:
+            stat = os.stat(path)
+        except OSError:
+            return {"path": path, "exists": False, "bytes": 0, "saved_at": None}
+        return {"path": path, "exists": True, "bytes": stat.st_size,
+                "saved_at": int(stat.st_mtime)}
+
     def status(self):
         arms = {arm: arm_stats(self.state["arms"][arm]["closed"]) for arm in ARMS}
         return {
@@ -376,6 +392,8 @@ class RegimeLab:
                            for p in self.state["arms"][arm]["open"]] for arm in ARMS},
             "arms": arms,
             "penalty": "paper only: no orders, no cash, no equity",
+            "restored": self.restored,
+            "state": self.state_info(),
             "last_error": self.last_error,
         }
 

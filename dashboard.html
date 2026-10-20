@@ -482,7 +482,12 @@ function render(s){
       pchip('ATR% '+(ph.atr_pct===undefined?'-':ph.atr_pct)) +
       pchip('pct '+(ph.pct===undefined?'-':ph.pct)) +
       pchip('hours '+fmt(lab.hours_seen,0)) +
-      pchip('age '+(lab.age_sec===null?'-':hm(lab.age_sec)))+'</div>';
+      pchip('age '+(lab.age_sec===null?'-':hm(lab.age_sec)))+
+      // a lab that cannot read its file forgets every open trade on restart,
+      // so the file itself is on the card, not only the numbers in memory
+      pchip(lab.state&&lab.state.exists?'state file ok':'state file MISSING',
+            lab.state&&lab.state.exists?'':'neg')+
+      pchip(lab.restored?'restored':'cold start')+'</div>';
     ['cell','control','cell_all'].forEach(function(a){
       var st=arms[a]||{}, open=(lab.open&&lab.open[a])||[];
       ah+='<div class="ev"><span><b>'+a+'</b> n '+fmt(st.n,0)+

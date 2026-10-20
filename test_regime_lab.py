@@ -327,6 +327,37 @@ check("journal keys are unique per arm and coin",
       jbot.journal.keys())
 check("journal module is lab", all(e["module"] == "lab" for e in jbot.journal.entries))
 
+# 11. a restart must not forget open trades, and the status has to say so
+status = lab.status()
+check("status reports where the state file is", status["state"]["path"].endswith(
+    regime_lab.STATE_FILE), status["state"])
+check("a lab that has saved reports the file", status["state"]["exists"] is True, status["state"])
+check("the saved file has content", status["state"]["bytes"] > 0, status["state"])
+check("a lab created on disk remembers it restored nothing",
+      status["restored"] is False, status["restored"])
+try:
+    os.remove(os.path.join(tmpdir, regime_lab.STATE_FILE))
+except OSError:
+    pass
+srclab = regime_lab.RegimeLab(fetch=fake_fetch, clock=lambda: now[0])
+srclab.refresh()
+reborn = regime_lab.RegimeLab(fetch=fake_fetch, clock=lambda: now[0])
+check("a restarted lab restores its state", reborn.restored is True, reborn.restored)
+check("the restarted lab keeps its clock", abs(reborn.state["last_run"]
+      - srclab.state["last_run"]) < 1e-6,
+      "%r vs %r" % (reborn.state["last_run"], srclab.state["last_run"]))
+check("the restarted lab keeps its closed trades",
+      len(reborn.state["arms"]["cell_all"]["closed"])
+      == len(srclab.state["arms"]["cell_all"]["closed"]),
+      "%d vs %d" % (len(reborn.state["arms"]["cell_all"]["closed"]),
+                    len(srclab.state["arms"]["cell_all"]["closed"])))
+check("the restarted lab keeps its open trades",
+      len(reborn.state["arms"]["cell_all"]["open"])
+      == len(srclab.state["arms"]["cell_all"]["open"]),
+      "%d vs %d" % (len(reborn.state["arms"]["cell_all"]["open"]),
+                    len(srclab.state["arms"]["cell_all"]["open"])))
+check("the restarted lab reports the file exists", reborn.status()["state"]["exists"] is True)
+
 status = lab.status()
 check("status says paper only", "no orders" in status["penalty"], status["penalty"])
 check("status exposes all three arms", set(status["arms"]) == set(regime_lab.ARMS))
