@@ -1,0 +1,89 @@
+{
+ "data": {
+  "coins": 52,
+  "cycles": 95,
+  "pairs": 285,
+  "from": "2026-03-22",
+  "to": "2026-10-07"
+ },
+ "windows": {
+  "1h": {
+   "tried": 570,
+   "fill_rate_pct": 89.12,
+   "mean_delay_h": 1.0,
+   "mean_drift_pct": -0.1766,
+   "share_adverse_pct": 52.8
+  },
+  "4h": {
+   "tried": 570,
+   "fill_rate_pct": 94.21,
+   "mean_delay_h": 1.09,
+   "mean_drift_pct": -0.1802,
+   "share_adverse_pct": 53.1
+  },
+  "24h": {
+   "tried": 570,
+   "fill_rate_pct": 98.6,
+   "mean_delay_h": 1.49,
+   "mean_drift_pct": -0.1854,
+   "share_adverse_pct": 53.4
+  }
+ },
+ "baseline_cost_pct": 0.23,
+ "base_gross_avg_pct": -0.257,
+ "hybrid_gross_avg_pct": -0.2949,
+ "hybrid_cost_avg_pct": 0.1462,
+ "stage2_offsets": {
+  "0.0%": {
+   "n": 570,
+   "fill_rate_pct": 94.21,
+   "benefit_mean_pct": -0.0693,
+   "benefit_share_pos_pct": 94.2,
+   "in_n": 378,
+   "in_benefit_pct": -0.072,
+   "in_fill_pct": 93.65,
+   "out_n": 192,
+   "out_benefit_pct": -0.0639,
+   "out_fill_pct": 95.31
+  },
+  "0.1%": {
+   "n": 570,
+   "fill_rate_pct": 90.53,
+   "benefit_mean_pct": -0.0506,
+   "benefit_share_pos_pct": 90.9,
+   "in_n": 378,
+   "in_benefit_pct": -0.0406,
+   "in_fill_pct": 90.48,
+   "out_n": 192,
+   "out_benefit_pct": -0.0702,
+   "out_fill_pct": 90.62
+  },
+  "0.2%": {
+   "n": 570,
+   "fill_rate_pct": 85.79,
+   "benefit_mean_pct": -0.0414,
+   "benefit_share_pos_pct": 86.8,
+   "in_n": 378,
+   "in_benefit_pct": -0.021,
+   "in_fill_pct": 85.98,
+   "out_n": 192,
+   "out_benefit_pct": -0.0817,
+   "out_fill_pct": 85.42
+  },
+  "0.5%": {
+   "n": 570,
+   "fill_rate_pct": 74.74,
+   "benefit_mean_pct": 0.0239,
+   "benefit_share_pos_pct": 78.6,
+   "in_n": 378,
+   "in_benefit_pct": 0.0478,
+   "in_fill_pct": 75.4,
+   "out_n": 192,
+   "out_benefit_pct": -0.0231,
+   "out_fill_pct": 73.44
+  }
+ },
+ "split": "2026-07-31",
+ "pairs_count": 285,
+ "note": "ALO/post-only entry measurement, 2026-10-21. Verdict: rejected (A2/A4 failed). Raw pair-level rows stay out of the repo; regenerate with `python3 bt_alo.py`."
+}
