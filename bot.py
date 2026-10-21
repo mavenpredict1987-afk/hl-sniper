@@ -22,6 +22,7 @@ import state_store
 import universe
 import journal
 import pairs as pairs_module
+import grid_lab
 import regime_lab
 
 
@@ -80,6 +81,9 @@ class Bot:
         # Paper-only regime lab: no orders, no cash, no equity. Its whole job is
         # to accrue forward evidence for a rule the backtest could not settle.
         self.lab = regime_lab.RegimeLab(self)
+        # Paper-only grid arm. It has its own capital and state file; like the
+        # laboratory it can never place an order.
+        self.grid = grid_lab.GridLab(self)
         self.status = {"status": "initialized", "mode": self.mode, "started": time.time()}
         self.restarts = 0
         self.last_save_ts = 0.0
@@ -906,6 +910,7 @@ class Bot:
             "sniper_enabled": config.SNIPER_ENABLED,
             "pairs": self.pairs.get_stats(),
             "lab": self.lab.status(),
+            "grid": self.grid.status(),
             "config": getattr(self, "config_snapshot", None),
             "journal": self.journal.recent(30),
             "journal_counts": self.journal.counts(),
@@ -940,6 +945,7 @@ class Bot:
                 self.manage_positions()
                 self.pairs.on_cycle()
                 self.lab.on_tick()
+                self.grid.on_tick()
                 if config.SNIPER_ENABLED and self._candle_window_open():
                     self._scan_candles(self.client.meta_and_ctxs())
                 self.update_status()

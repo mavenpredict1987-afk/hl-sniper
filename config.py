@@ -92,6 +92,14 @@ PAPER_LAB_UNIVERSE = [s.strip() for s in os.getenv(
     "PAPER_LAB_UNIVERSE",
     "ETH,SOL,AVAX,ARB,AAVE,ADA,LINK,DOGE,SUI,NEAR,XRP").split(",") if s.strip()]
 
+# Paper-only grid arm (research/GRID_PREREG.md). Same idea as the reference bot
+# - long grid on dips, +1.5% target, 20% stop - but sized at 0.5% risk per lot
+# instead of his 41% of equity per position. Its own state file and its own
+# journal prefix, so it cannot bias the pairs measurement.
+GRID_LAB_ENABLED = os.getenv("GRID_LAB_ENABLED", "1").strip().lower() not in (
+    "0", "false", "no")
+GRID_LAB_SEC = float(os.getenv("GRID_LAB_SEC", "3600"))
+
 # The sniper is OFF by default. On 52 coins over 208 days it returned +9.8%
 # while an equal-weight basket of the same coins returned about +29.5%, and its
 # two halves were -3.3% and +26.0%, so the positive number was one favourable
