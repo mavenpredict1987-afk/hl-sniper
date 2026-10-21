@@ -109,8 +109,8 @@ CATALOG = (
          evidence="Telegram: вход, выход, стопы и старт бота; токен и чат в переменных Railway"),
     dict(id="ai_shadow", cat=CAT_INFRA, name="ИИ-аналитик (shadow)", status=MISSING,
          evidence="оценивает входы, не влияет на решения - не реализовано"),
-    dict(id="alo", cat=CAT_INFRA, name="ALO / post-only ордера", status=MISSING,
-         evidence="maker-исполнение 0.015% вместо 0.045%; в paper не нужны, понадобятся на реале"),
+    dict(id="alo", cat=CAT_INFRA, name="ALO / post-only ордера", status=REJECTED,
+         evidence="наш замер 21.10 (#27): fill 94%, но сдвиг после филла -0.18% против экономии 0.043% на ногу; издержки пары -36%, итог +0.05% на пару - шум; A2/A4 провалены, на реал не берём"),
 )
 
 
