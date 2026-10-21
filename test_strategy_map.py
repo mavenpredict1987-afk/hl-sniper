@@ -52,6 +52,10 @@ check("chart blocks are measured, not pending",
       by_id["chart_blocks"]["status"] == strategy_map.REJECTED
       and "21.10" in by_id["chart_blocks"]["evidence"],
       by_id["chart_blocks"]["status"])
+check("cascade is measured, not pending",
+      by_id["cascade"]["status"] == strategy_map.REJECTED
+      and "21.10" in by_id["cascade"]["evidence"],
+      by_id["cascade"]["status"])
 check("rejected entries cite their own measurement",
       all(any(ch.isdigit() for ch in i["evidence"]) for i in items
           if i["status"] == strategy_map.REJECTED))
