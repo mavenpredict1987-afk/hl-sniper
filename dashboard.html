@@ -192,7 +192,7 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
 <div class="acc">
   <div class="acc-head" onclick="toggle('acc-coin')"><span class="acc-ico">&#9673;</span>Разбор по монетам<span class="acc-sub" id="coin-sub">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body" id="acc-coin"><div class="acc-inner"><div style="padding-top:10px">
-    <div class="note">Что скан измерил по каждой монете и почему она не торгуется. Наверху монеты, где стоят деньги: позиция снайпера, лот сетки или нога пары.</div>
+    <div class="note">Что скан измерил по каждой монете и почему она не торгуется. Наверху монеты, где стоят деньги: позиция снайпера, лот сетки или нога пары. Замер идёт раз в час, отдельно от торговли &mdash; поэтому таблица живая даже при выключенном снайпере. Score считает только модуль снайпера: пока он выключен, там прочерк, и это честно, а не сбой.</div>
     <div id="coins"></div>
   </div></div></div>
 </div>
@@ -616,7 +616,12 @@ function render(s){
 
   // per-coin breakdown: the scanned picture, not only the booked trades
   var cn=s.coins||[];
-  document.getElementById('coin-sub').textContent=cn.length+' в разборе';
+  var w=s.watch||{}, newest=0;
+  cn.forEach(function(c){if(c.measured_ts&&c.measured_ts>newest)newest=c.measured_ts;});
+  var hdr=cn.length+' в разборе';
+  if(newest)hdr+=' · замер '+Math.max(0,Math.round((Date.now()/1000-newest)/60))+' мин назад';
+  if(w.error)hdr+=' · ошибка: '+w.error;
+  document.getElementById('coin-sub').textContent=hdr;
   var ch='<div class="coin-row coin-hd"><div>Монета</div><div>Цена / 24ч</div>'+
          '<div>Score</div><div>ADX</div><div>Экспозиция</div></div>';
   cn.forEach(function(c){
@@ -630,6 +635,8 @@ function render(s){
     if(c.grid_lots&&c.grid_unreal_pct!==null&&c.grid_unreal_pct!==undefined)
       tags.push('лот '+(c.grid_unreal_pct>=0?'+':'')+fmt(c.grid_unreal_pct,2)+'%');
     if(c.atr_pct!==null&&c.atr_pct!==undefined) tags.push('ATR '+fmt(c.atr_pct,2)+'%');
+    if(c.chg_7d!==null&&c.chg_7d!==undefined)
+      tags.push('7д '+(c.chg_7d>=0?'+':'')+fmt(c.chg_7d,2)+'%');
     if(c.vol_usd) tags.push('объём $'+fmt(c.vol_usd/1e6,1)+'M');
     if(c.noise) tags.push(c.noise);
     if(c.benched) tags.push('в бане');

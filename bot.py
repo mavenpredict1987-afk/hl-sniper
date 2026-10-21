@@ -98,6 +98,8 @@ class Bot:
         self.coin_info = {}
         self.active_symbols = list(config.SYMBOLS)
         self.last_hour_bucket = 0
+        self.watch_seen = 0
+        self.watch_error = ""
         setup_logging()
         self._load_universe()
         self._restore_state()
@@ -732,6 +734,105 @@ class Bot:
             return "high"
         return "normal"
 
+    def _watch_coins(self, delay=None):
+        """Measure the active universe for the dashboard; trade nothing.
+
+        The signal scan only runs while the sniper is enabled, so with it off
+        the panel would have no measurements and the bot would look asleep.
+        This pass fetches the same candles the scan would fetch and stops at
+        measure_coin: it cannot open a position, and it writes nothing but
+        self.coin_info.
+        """
+        ctxs = {}
+        # A clean start, so a pass that fully succeeds clears the last failure
+        # instead of leaving a stale error on the panel.
+        self.watch_error = ""
+        try:
+            ctxs = self.client.meta_and_ctxs() or {}
+        except Exception as exc:  # noqa: BLE001 - the panel is not worth a loop error
+            self.watch_error = "ctxs: %s" % exc
+        # candleSnapshot allows roughly 20 requests a minute, so the pass is
+        # spaced out like the universe scan. It runs on its own thread, once an
+        # hour: nobody is waiting for it.
+        delay = config.UNIVERSE_DELAY_SEC if delay is None else delay
+        now_ms = int(time.time() * 1000)
+        start_ms = now_ms - config.CANDLE_COUNT * 3600 * 1000
+        symbols = list(self.active_symbols)
+        seen = 0
+        for i, sym in enumerate(symbols):
+            if i and delay > 0:
+                time.sleep(delay)
+            try:
+                candles = self.client.candles(sym, config.TIMEFRAME, start_ms, now_ms)
+                if len(candles) < 60:
+                    continue
+                measured = self.measure_coin(sym, ctxs.get(sym) or {}, candles)
+                if measured is None:
+                    continue
+                self.coin_info[sym] = measured[0]
+                seen += 1
+            except Exception as exc:  # noqa: BLE001 - one coin must not stop the pass
+                self.watch_error = "%s: %s" % (sym, exc)
+        self.watch_seen = seen
+        self._event("watch: measured %d coins" % seen)
+
+    def _watch_loop(self):
+        """Hourly, on its own thread: the dashboard must not wait for the scan."""
+        while self.running:
+            try:
+                self._watch_coins()
+            except Exception as exc:  # noqa: BLE001 - never kill the thread
+                self.watch_error = "loop: %s" % exc
+            time.sleep(3600)
+
+    def measure_coin(self, symbol, ctx, candles):
+        """Everything we know about one coin from its candles, nothing else.
+
+        Pure measurement: no orders, no sniper state, no journal. The trading
+        scan calls it and then decides whether the numbers justify a trade; the
+        hourly watch pass calls it only to fill the dashboard. One
+        implementation means the panel cannot report different numbers than the
+        signal that traded the coin.
+        """
+        info = self.universe.get(symbol) or {}
+        highs = [c["h"] for c in candles]
+        lows = [c["l"] for c in candles]
+        closes = [c["c"] for c in candles]
+        vols = [c["v"] for c in candles]
+        last_close = closes[-1]
+        a = atr(highs, lows, closes)
+        if a <= 0:
+            return None
+        atrs = atr_series(highs, lows, closes, from_len=30)
+        atr_slow = sma(atrs, 50)
+        regime = self.regime_of(a, atr_slow)
+        e_fast = ema(closes[-60:], 20)
+        e_slow = ema(closes[-120:], 50)
+        direction = "long" if e_fast > e_slow else "short"
+        ax = adx(highs, lows, closes)
+        base_vol = sma(vols[-21:-1], 20)
+        v_ratio = vols[-2] / base_vol if base_vol > 0 else 0.0
+        row = {
+            "ts": time.time(),
+            "adx": round(ax, 1),
+            "atr_pct": round(100.0 * a / last_close, 2) if last_close else None,
+            # 168 hourly candles is the seven-day window; 24 for the day.
+            "chg_24h": round(100.0 * (last_close / closes[-25] - 1.0), 2) if len(closes) >= 25 else None,
+            "chg_7d": round(100.0 * (last_close / closes[-169] - 1.0), 2) if len(closes) >= 169 else None,
+            "funding_bp": round(1e4 * (ctx.get("funding") or 0.0), 2),
+            "vol_usd": ctx.get("day_volume_usd"),
+            "regime": regime,
+            "direction": direction,
+            "noise": info.get("noise_class"),
+            "tradable": info.get("tradable", True),
+            "score": None,
+            "note": "",
+        }
+        locals_ = {"atr": a, "adx": ax, "direction": direction, "regime": regime,
+                   "last_close": last_close, "vol_ratio": v_ratio,
+                   "highs": highs, "lows": lows, "closes": closes, "vols": vols}
+        return row, locals_
+
     def analyze_symbol(self, symbol, ctxs):
         if symbol in config.BLACKLIST:
             return
@@ -756,41 +857,18 @@ class Bot:
         if len(candles) < 60:
             self._event("skip %s: not enough candles" % symbol)
             return
-        highs = [c["h"] for c in candles]
-        lows = [c["l"] for c in candles]
-        closes = [c["c"] for c in candles]
-        vols = [c["v"] for c in candles]
-        last_close = closes[-1]
-        a = atr(highs, lows, closes)
-        if a <= 0:
+        measured = self.measure_coin(symbol, ctx, candles)
+        if measured is None:
             return
-        atrs = atr_series(highs, lows, closes, from_len=30)
-        atr_slow = sma(atrs, 50)
-        regime = self.regime_of(a, atr_slow)
-        e_fast = ema(closes[-60:], 20)
-        e_slow = ema(closes[-120:], 50)
-        direction = "long" if e_fast > e_slow else "short"
-        ax = adx(highs, lows, closes)
-        base_vol = sma(vols[-21:-1], 20)
-        v_ratio = vols[-2] / base_vol if base_vol > 0 else 0.0
-        # One row per coin for the dashboard: what the scan measured, and later
-        # why it did or did not become a trade. Kept on the bot rather than in
-        # the dashboard so the numbers come from the same place as the signals.
-        self.coin_info[symbol] = {
-            "ts": time.time(),
-            "adx": round(ax, 1),
-            "atr_pct": round(100.0 * a / last_close, 2) if last_close else None,
-            "chg_24h": round(100.0 * (last_close / closes[-25] - 1.0), 2) if len(closes) >= 25 else None,
-            "chg_7d": round(100.0 * (last_close / closes[-49] - 1.0), 2) if len(closes) >= 49 else None,
-            "funding_bp": round(1e4 * (ctx.get("funding") or 0.0), 2),
-            "vol_usd": ctx.get("day_volume_usd"),
-            "regime": regime,
-            "direction": direction,
-            "noise": (info or {}).get("noise_class"),
-            "tradable": (info or {}).get("tradable", True),
-            "score": None,
-            "note": "",
-        }
+        row, m = measured
+        self.coin_info[symbol] = row
+        highs, lows, vols = m["highs"], m["lows"], m["vols"]
+        last_close = m["last_close"]
+        a = m["atr"]
+        ax = m["adx"]
+        direction = m["direction"]
+        regime = m["regime"]
+        v_ratio = m["vol_ratio"]
         levels = find_levels(highs[:-1], lows[:-1], vols[:-1], a)
         prev = candles[-2]
         if not breakout_confirmed(levels, direction, prev["l"], prev["h"], last_close, a):
@@ -891,6 +969,12 @@ class Bot:
             ci = self.coin_info.get(sym) or {}
             px = self.last_prices.get(sym)
             lots = grid_open.get(sym) or []
+            if px is None and lots:
+                # A grid lot can outlive its coin's membership in the active
+                # universe, so the price poll stops updating it. The lab keeps
+                # the last close it saw; showing that beats showing a dash on a
+                # coin that is holding money.
+                px = lots[0].get("last")
             unreal = None
             if lots and px:
                 avg = sum(lot["entry"] for lot in lots) / len(lots)
@@ -918,6 +1002,7 @@ class Bot:
                 "benched": self.symbol_benched(sym),
                 "tradable": info.get("tradable", True),
                 "note": note,
+            "measured_ts": ci.get("ts"),
             })
         rows.sort(key=lambda r: (bool(r["pos"] or r["grid_lots"] or r["pair"]),
                                  r["score"] or 0.0, r["vol_usd"] or 0.0),
@@ -998,6 +1083,9 @@ class Bot:
             "pairs": self.pairs.get_stats(),
             "lab": self.lab.status(),
             "grid": self.grid.status(),
+            # Read-only hourly measurement pass, so the panel can say how fresh
+            # its per-coin numbers are and whether the pass is failing.
+            "watch": {"seen": self.watch_seen, "error": self.watch_error},
             "config": getattr(self, "config_snapshot", None),
             "journal": self.journal.recent(30),
             "journal_counts": self.journal.counts(),
@@ -1015,6 +1103,7 @@ class Bot:
         self.status["status"] = "running"
         threading.Thread(target=start_health_server, kwargs={"port": config.PORT}, daemon=True).start()
         threading.Thread(target=self._universe_loop, daemon=True).start()
+        threading.Thread(target=self._watch_loop, daemon=True).start()
         self._event("bot v1.2 started, polling every %ds" % config.PRICE_POLL_SEC)
         send_telegram("HL sniper v1.2 %s | %s | equity=$%s trades=%d universe=%d restarts=%d" % (
             "resumed" if self.resumed else "cold start", self.mode, money(self.equity),

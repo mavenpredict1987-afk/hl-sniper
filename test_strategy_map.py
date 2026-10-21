@@ -185,6 +185,83 @@ for c in (bot.status.get("coins") or []):
         check("coin with lots has an unreal figure", c["grid_unreal_pct"] is not None, c["sym"])
         break
 
+# ----------------------------- the hourly watch pass measures without trading
+# The signal scan runs only while the sniper is enabled. With the sniper off the
+# panel still has to answer "why is this coin not trading", so the watch pass
+# reads the same candles and stops at measurement. These checks pin that it
+# measures, that it does not open anything, and that one bad coin cannot blind
+# the whole table.
+
+
+def fake_candles(n=300, base=100.0, drift=0.001):
+    out = []
+    px = base
+    for i in range(n):
+        px *= (1.0 + drift)
+        out.append({"t": i * 3600000, "o": px, "h": px * 1.01, "l": px * 0.99,
+                    "c": px, "v": 1000.0 + i})
+    return out
+
+
+class FakeWatchClient:
+    def __init__(self):
+        self.candle_calls = []
+
+    def meta_and_ctxs(self, cache_sec=60):
+        return {"AAA": {"funding": 0.00001, "day_volume_usd": 5e7},
+                "BBB": {"funding": -0.00002, "day_volume_usd": 4e7},
+                "CCC": {"funding": 0.0, "day_volume_usd": 4e7}}
+
+    def candles(self, sym, interval="1h", start=None, end=None):
+        self.candle_calls.append(sym)
+        if sym == "CCC":
+            raise RuntimeError("boom")
+        return fake_candles()
+
+
+watch_bot = Bot()
+watch_bot.active_symbols = ["AAA", "BBB", "CCC"]
+watch_bot.positions = {}
+watch_bot.universe = {"AAA": {"coin": "AAA", "noise_class": "calm", "tradable": True},
+                      "BBB": {"coin": "BBB", "noise_class": "normal", "tradable": True},
+                      "CCC": {"coin": "CCC", "noise_class": "noisy", "tradable": True}}
+watch_bot.client = FakeWatchClient()
+watch_bot.last_prices = {"AAA": 1.0, "BBB": 2.0}
+watch_bot._watch_coins(delay=0)
+check("watch pass measured the healthy coins",
+      set(watch_bot.coin_info) == {"AAA", "BBB"}, sorted(watch_bot.coin_info))
+check("watch pass recorded how many it measured", watch_bot.watch_seen == 2, watch_bot.watch_seen)
+check("watch pass reports the coin that failed", "CCC" in watch_bot.watch_error,
+      watch_bot.watch_error)
+check("watch pass asked for every coin exactly once",
+      sorted(watch_bot.client.candle_calls) == ["AAA", "BBB", "CCC"],
+      watch_bot.client.candle_calls)
+
+measured = watch_bot.coin_info["AAA"]
+check("watch pass fills the 24h change", measured["chg_24h"] is not None, measured["chg_24h"])
+check("watch pass fills the 7d change from 168 hourly candles",
+      measured["chg_7d"] is not None and measured["chg_7d"] > measured["chg_24h"],
+      (measured["chg_24h"], measured["chg_7d"]))
+check("watch pass fills funding in basis points",
+      abs(measured["funding_bp"] - 0.1) < 1e-9, measured["funding_bp"])
+check("watch pass fills the noise class", measured["noise"] == "calm", measured["noise"])
+check("watch pass leaves the score empty, because it does not score",
+      measured["score"] is None, measured["score"])
+check("watch pass opens no positions", watch_bot.positions == {}, watch_bot.positions)
+check("watch pass opens no trades", watch_bot.trades == [], len(watch_bot.trades))
+check("watch pass opens no grid lots", watch_bot.grid.status()["open_count"] == 0)
+
+watch_bot.update_status()
+check("status carries the watch counters",
+      (watch_bot.status.get("watch") or {}).get("seen") == 2,
+      watch_bot.status.get("watch"))
+watch_rows = {c["sym"]: c for c in watch_bot.status["coins"]}
+check("measured coin reaches the table", "AAA" in watch_rows, sorted(watch_rows))
+check("table row carries the 7d change from the watch pass",
+      watch_rows["AAA"]["chg_7d"] == measured["chg_7d"], watch_rows["AAA"]["chg_7d"])
+check("table row carries the measurement timestamp",
+      watch_rows["AAA"]["measured_ts"] is not None, watch_rows["AAA"]["measured_ts"])
+
 print()
 if failures:
     print("FAILED:", ", ".join(failures))
