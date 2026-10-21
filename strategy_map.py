@@ -61,8 +61,8 @@ CATALOG = (
          evidence="лучший конфиг t=1.17 - незначимо"),
     dict(id="cascade", cat=CAT_STRATEGY, name="Каскад-бай (покупка обвала)", status=REJECTED,
          evidence="наш замер 21.10 (#24): брутто +0.14%, нетто -0.05% при 0.19% издержек круга, t 0.67 на 226 независимых сделках - сигнал не покрывает комиссии"),
-    dict(id="funding", cat=CAT_STRATEGY, name="Фандинг-кэрри", status=MISSING,
-         evidence="фандинг учитывается в издержках, как стратегия не проверялся"),
+    dict(id="funding", cat=CAT_STRATEGY, name="Фандинг-кэрри", status=REJECTED,
+         evidence="наш замер 21.10 (#25): фандинг +6.55% за 208 дней, но цена -26.64% (шорт горячих монет -52.42%), t -1.15 - ставка против моментума"),
     dict(id="althunt", cat=CAT_STRATEGY, name="Охота за новыми активами", status=MISSING,
          evidence="скан новых листингов/возвратных монет - не реализовано"),
 
