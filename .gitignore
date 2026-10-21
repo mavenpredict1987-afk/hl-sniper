@@ -17,3 +17,7 @@ universe.json
 research/friend/
 research/*.pdf
 research/*REFERENCE*.txt
+
+# Local probe output, throwaway HTML/logs, never part of the bot.
+.probe/
+_capture/
