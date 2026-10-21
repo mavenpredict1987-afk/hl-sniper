@@ -24,6 +24,7 @@ import journal
 import pairs as pairs_module
 import grid_lab
 import regime_lab
+import strategy_map
 
 
 @dataclass
@@ -90,6 +91,11 @@ class Bot:
         self.state_source = None
         self.resumed = False
         self.universe = {}
+        # Last measured picture of each coin, refreshed once an hour with the
+        # scan. It outlives nothing (a restart clears it) but it is what lets
+        # the dashboard answer "why is this coin not trading" without asking
+        # the API again.
+        self.coin_info = {}
         self.active_symbols = list(config.SYMBOLS)
         self.last_hour_bucket = 0
         setup_logging()
@@ -767,9 +773,28 @@ class Bot:
         ax = adx(highs, lows, closes)
         base_vol = sma(vols[-21:-1], 20)
         v_ratio = vols[-2] / base_vol if base_vol > 0 else 0.0
+        # One row per coin for the dashboard: what the scan measured, and later
+        # why it did or did not become a trade. Kept on the bot rather than in
+        # the dashboard so the numbers come from the same place as the signals.
+        self.coin_info[symbol] = {
+            "ts": time.time(),
+            "adx": round(ax, 1),
+            "atr_pct": round(100.0 * a / last_close, 2) if last_close else None,
+            "chg_24h": round(100.0 * (last_close / closes[-25] - 1.0), 2) if len(closes) >= 25 else None,
+            "chg_7d": round(100.0 * (last_close / closes[-49] - 1.0), 2) if len(closes) >= 49 else None,
+            "funding_bp": round(1e4 * (ctx.get("funding") or 0.0), 2),
+            "vol_usd": ctx.get("day_volume_usd"),
+            "regime": regime,
+            "direction": direction,
+            "noise": (info or {}).get("noise_class"),
+            "tradable": (info or {}).get("tradable", True),
+            "score": None,
+            "note": "",
+        }
         levels = find_levels(highs[:-1], lows[:-1], vols[:-1], a)
         prev = candles[-2]
         if not breakout_confirmed(levels, direction, prev["l"], prev["h"], last_close, a):
+            self.coin_info[symbol]["note"] = "нет слома структуры - вход не по правилам"
             return
         self.sniper.convergence.add_signal(symbol, generate_trend_signal(direction, ax, config.ADX_MIN))
         self.sniper.convergence.add_signal(symbol, generate_volume_signal(direction, v_ratio, config.VOLUME_RATIO_MIN))
@@ -782,7 +807,9 @@ class Bot:
         self.sniper.convergence.add_signal(symbol, generate_funding_signal(direction, ctx.get("funding", 0.0)))
         conv = self.sniper.convergence.evaluate(symbol)
         if not conv or conv["direction"] != direction:
+            self.coin_info[symbol]["note"] = "сигналы не сошлись в сторону"
             return
+        self.coin_info[symbol]["score"] = round(conv["score"], 3)
         if conv["direction"] == "short" and not config.SHORTS_ENABLED:
             self._event("skip %s: shorts disabled" % symbol)
             return
@@ -796,6 +823,8 @@ class Bot:
         if conv["score"] < threshold:
             self._event("skip %s: score %.2f below regime bar %.2f (%s)" % (
                 symbol, conv["score"], threshold, regime))
+            self.coin_info[symbol]["note"] = "score %.2f ниже порога %.2f" % (
+                conv["score"], threshold)
             return
         stop = last_close - config.ATR_STOP_MULT * a if direction == "long" else last_close + config.ATR_STOP_MULT * a
         target_dist = config.ATR_TARGET_MULT * a
@@ -836,6 +865,64 @@ class Bot:
             self.day_halt = True
             self._event("DAILY STOP: entries blocked until tomorrow UTC")
             send_telegram("DAILY STOP - entries blocked until tomorrow UTC")
+
+    def _coins_breakdown(self, limit=40):
+        """One row per coin the bot currently has an opinion about.
+
+        The dashboard used to show only open positions, so a coin that was
+        scanned, scored and rejected was invisible - which looks identical to a
+        bot that is asleep. Now every coin carries its measurement and the
+        reason it is not trading, and coins with exposure sort to the top.
+        """
+        grid_open = {}
+        for row in ((self.status.get("grid") or {}).get("open") or []):
+            grid_open.setdefault(row["coin"], []).append(row)
+        pair_side = {}
+        for pp in getattr(self.pairs, "positions", []):
+            pair_side[pp.long_sym] = "L"
+            pair_side[pp.short_sym] = "S"
+        held = {sym: pos.direction for sym, pos in self.positions.items()}
+        universe = self.universe or {}
+        names = (set(universe) | set(grid_open) | set(pair_side) | set(held)
+                 | set(self.last_prices))
+        rows = []
+        for sym in names:
+            info = universe.get(sym) or {}
+            ci = self.coin_info.get(sym) or {}
+            px = self.last_prices.get(sym)
+            lots = grid_open.get(sym) or []
+            unreal = None
+            if lots and px:
+                avg = sum(lot["entry"] for lot in lots) / len(lots)
+                if avg:
+                    unreal = round(100.0 * (px / avg - 1.0), 2)
+            flags = info.get("flags") or []
+            note = ci.get("note") or ""
+            if not note and flags:
+                note = "скан: " + ", ".join(flags)
+            rows.append({
+                "sym": sym,
+                "price": px,
+                "chg_24h": ci.get("chg_24h"),
+                "chg_7d": ci.get("chg_7d"),
+                "score": ci.get("score"),
+                "adx": ci.get("adx"),
+                "atr_pct": ci.get("atr_pct"),
+                "noise": info.get("noise_class") or ci.get("noise"),
+                "vol_usd": info.get("day_vlm"),
+                "funding_bp": ci.get("funding_bp"),
+                "grid_lots": len(lots),
+                "grid_unreal_pct": unreal,
+                "pair": pair_side.get(sym),
+                "pos": held.get(sym),
+                "benched": self.symbol_benched(sym),
+                "tradable": info.get("tradable", True),
+                "note": note,
+            })
+        rows.sort(key=lambda r: (bool(r["pos"] or r["grid_lots"] or r["pair"]),
+                                 r["score"] or 0.0, r["vol_usd"] or 0.0),
+                  reverse=True)
+        return rows[:limit]
 
     def update_status(self):
         self._recalc_equity()
@@ -916,6 +1003,10 @@ class Bot:
             "journal_counts": self.journal.counts(),
             "journal_dropped": self.journal.dropped,
             "events": list(reversed(self.events[-20:]))})
+        # The strategy registry and the per-coin table read the status dict that
+        # was just built, so they cannot drift from what the bot is doing.
+        self.status["coins"] = self._coins_breakdown()
+        self.status["strategies"] = strategy_map.build(self.status)
         HealthHandler.bot_status = self.status
         self._save_state()
 

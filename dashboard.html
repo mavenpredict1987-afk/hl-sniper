@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>HL Sniper Bot - Dashboard</title>
+<title>HL Sniper — терминал бота</title>
 <meta name="theme-color" content="#0c0e13">
 <style>
 :root{
@@ -97,121 +97,156 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
 .chip.on{color:var(--teal);border-color:rgba(92,242,201,.35)}
 .chip.off{color:var(--amber);border-color:rgba(251,191,36,.35)}
 .chip.warn{color:var(--red);border-color:rgba(248,113,113,.35)}
+
+/* strategy and module registry */
+.strat-list{display:grid;gap:8px}
+.strat{background:var(--card2);border:1px solid var(--line);border-radius:11px;padding:10px 12px}
+.strat-top{display:flex;align-items:center;gap:8px}
+.sdot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--dim)}
+.sdot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
+.sdot.warn{background:var(--amber)}
+.sdot.neg{background:var(--red)}
+.sname{font-size:13px;font-weight:700;flex:1;min-width:0}
+.sstat{font-size:10px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+.sstat.on{color:var(--green)}.sstat.warn{color:var(--amber)}.sstat.neg{color:var(--red)}
+.slive{font-size:11.5px;margin-top:5px}
+.sev{font-size:11px;color:var(--dim);margin-top:4px;line-height:1.45}
+/* per-coin breakdown */
+.coin-row{display:grid;grid-template-columns:1.1fr 1fr .6fr .5fr .95fr;gap:6px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line);font-size:11.5px}
+.coin-row:last-child{border-bottom:0}
+.coin-hd{color:var(--dim);font-size:10px;letter-spacing:.07em;text-transform:uppercase}
+.coin-sym{font-weight:700}
+.coin-dim{color:var(--dim)}
 </style>
 </head>
 <body>
 <header>
-  <div class="brand">HL SNIPER<span>BOT</span></div>
-  <div class="brand-sub">v1.2 - sniper - paper/live terminal</div>
+  <div class="brand">HL SNIPER<span>БОТ</span></div>
+  <div class="brand-sub">v1.3 · снайпер + сетка + пары · бумага/реал</div>
   <div class="badge-row">
     <span class="dot" id="dot"></span>
     <span class="badge paper" id="mode-badge">-</span>
-    <span class="badge halt" id="halt-badge" style="display:none">HALT</span>
-    <span class="badge dayhalt" id="dayhalt-badge" style="display:none">DAY STOP</span>
+    <span class="badge halt" id="halt-badge" style="display:none">СТОП</span>
+    <span class="badge dayhalt" id="dayhalt-badge" style="display:none">ДНЕВНОЙ СТОП</span>
   </div>
 </header>
-<div class="upd" id="upd">connecting...</div>
+<div class="upd" id="upd">подключение...</div>
 
 <div class="strip">
-  <div class="ind"><span class="lamp g" id="lamp-bot"></span><div><div class="tt">Bot</div><div class="vv" id="v-bot">-</div></div></div>
-  <div class="ind"><span class="lamp g" id="lamp-ent"></span><div><div class="tt">New entries</div><div class="vv" id="v-ent">-</div></div></div>
-  <div class="ind"><span class="lamp g" id="lamp-dd"></span><div><div class="tt">Drawdown</div><div class="vv" id="v-dd">-</div></div></div>
-  <div class="ind"><span class="lamp b" id="lamp-risk"></span><div><div class="tt">Risk in play</div><div class="vv" id="v-risk">-</div></div></div>
+  <div class="ind"><span class="lamp g" id="lamp-bot"></span><div><div class="tt">Бот</div><div class="vv" id="v-bot">-</div></div></div>
+  <div class="ind"><span class="lamp g" id="lamp-ent"></span><div><div class="tt">Новые входы</div><div class="vv" id="v-ent">-</div></div></div>
+  <div class="ind"><span class="lamp g" id="lamp-dd"></span><div><div class="tt">Просадка</div><div class="vv" id="v-dd">-</div></div></div>
+  <div class="ind"><span class="lamp b" id="lamp-risk"></span><div><div class="tt">Риск в игре</div><div class="vv" id="v-risk">-</div></div></div>
 </div>
 
 <div class="prices" id="prices"></div>
 
 <div class="card eq-card" id="eq-card">
-  <div class="eq-label">Capital - tap for stats</div>
+  <div class="eq-label">Капитал — нажми для статистики</div>
   <div class="eq-top">
     <div class="eq-val" id="eq">-</div>
     <div class="eq-delta neu" id="eq-delta">-</div>
   </div>
-  <div id="spark-wrap"><div class="spark-empty" id="spark-empty">equity curve appears after a few minutes of bot runtime...</div></div>
+  <div id="spark-wrap"><div class="spark-empty" id="spark-empty">кривая капитала появится через несколько минут работы</div></div>
   <div class="acc-body" id="eq-acc"><div class="acc-inner"><div class="stats">
-    <div class="stat"><div class="l">DD from peak</div><div class="v" id="s-dd">-</div><div class="h">halt at 15%</div></div>
-    <div class="stat"><div class="l">Daily P&amp;L</div><div class="v" id="s-day">-</div><div class="h">UTC day</div></div>
-    <div class="stat"><div class="l">Risk in play</div><div class="v" id="s-risk">-</div><div class="h" id="s-risk-h">-</div></div>
-    <div class="stat"><div class="l">Winrate</div><div class="v" id="s-winrate">-</div><div class="h" id="s-wl">-</div></div>
-    <div class="stat"><div class="l">Avg R</div><div class="v" id="s-avgr">-</div><div class="h">per trade</div></div>
-    <div class="stat"><div class="l">Kelly risk</div><div class="v" id="s-kelly">-</div><div class="h">fraction 0.45</div></div>
-    <div class="stat"><div class="l">Snipes</div><div class="v" id="s-snipes">-</div><div class="h" id="s-snipes-h">-</div></div>
-    <div class="stat"><div class="l">Uptime</div><div class="v" id="s-uptime">-</div><div class="h" id="s-started">-</div></div>
+    <div class="stat"><div class="l">Просадка от пика</div><div class="v" id="s-dd">-</div><div class="h">стоп-кран 15%</div></div>
+    <div class="stat"><div class="l">Дневной P&amp;L</div><div class="v" id="s-day">-</div><div class="h">по UTC</div></div>
+    <div class="stat"><div class="l">Риск в игре</div><div class="v" id="s-risk">-</div><div class="h" id="s-risk-h">-</div></div>
+    <div class="stat"><div class="l">Винрейт</div><div class="v" id="s-winrate">-</div><div class="h" id="s-wl">-</div></div>
+    <div class="stat"><div class="l">Средний R</div><div class="v" id="s-avgr">-</div><div class="h">на сделку</div></div>
+    <div class="stat"><div class="l">Риск по Келли</div><div class="v" id="s-kelly">-</div><div class="h">доля 0.25</div></div>
+    <div class="stat"><div class="l">Снайпы</div><div class="v" id="s-snipes">-</div><div class="h" id="s-snipes-h">-</div></div>
+    <div class="stat"><div class="l">Время работы</div><div class="v" id="s-uptime">-</div><div class="h" id="s-started">-</div></div>
   </div></div></div>
-  <div class="upd" id="eq-more" style="margin-top:6px">&#9662; stats</div>
+  <div class="upd" id="eq-more" style="margin-top:6px">&#9662; статистика</div>
 </div>
 
 <div class="card">
-  <div class="sec-cap">What the bot is doing right now</div>
+  <div class="sec-cap">Что бот делает прямо сейчас</div>
   <div class="cfg" id="cfg-row"></div>
   <div class="note" id="cfg-note"></div>
 </div>
 
 <div class="card">
-  <div class="sec-cap">Pairs &mdash; market neutral</div>
+  <div class="sec-cap">Парный арбитраж — нейтральный к рынку</div>
   <div class="cfg" id="pairs-row"></div>
   <div class="cfg" id="pairs-costs" style="margin-top:6px"></div>
   <div id="pairs-open" style="margin-top:8px"></div>
   <div class="note" id="pairs-note"></div>
 </div>
 
+<div class="card">
+  <div class="sec-cap">Стратегии и модули — что работает, а что нет</div>
+  <div class="cfg" id="strat-sum"></div>
+  <div style="margin-top:10px" id="strat"></div>
+  <div class="note">Статус ставится по замеру, а не по замыслу. «Отклонён» значит стратегия проверена и провалила свой же критерий — второй раз в неё не идём. «Нет» значит идея названа, кода нет. Живые числа берутся из того же /status, что и остальная панель, поэтому расхождений быть не может.</div>
+</div>
+
 <div class="acc">
-  <div class="acc-head" onclick="toggle('acc-pos')"><span class="acc-ico">&#9636;</span>Open positions<span class="acc-sub" id="pos-count">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-head" onclick="toggle('acc-pos')"><span class="acc-ico">&#9636;</span>Открытые позиции<span class="acc-sub" id="pos-count">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body open" id="acc-pos"><div class="acc-inner"><div style="padding-top:10px">
     <div class="pos-grid" id="positions"></div>
   </div></div></div>
 </div>
 
 <div class="acc">
-  <div class="acc-head" onclick="toggle('acc-sn')"><span class="acc-ico">&#9678;</span>Sniper engine<span class="acc-sub" id="sn-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-head" onclick="toggle('acc-coin')"><span class="acc-ico">&#9673;</span>Разбор по монетам<span class="acc-sub" id="coin-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-body" id="acc-coin"><div class="acc-inner"><div style="padding-top:10px">
+    <div class="note">Что скан измерил по каждой монете и почему она не торгуется. Наверху монеты, где стоят деньги: позиция снайпера, лот сетки или нога пары.</div>
+    <div id="coins"></div>
+  </div></div></div>
+</div>
+
+<div class="acc">
+  <div class="acc-head" onclick="toggle('acc-sn')"><span class="acc-ico">&#9678;</span>Снайпер (движок)<span class="acc-sub" id="sn-sub">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body" id="acc-sn"><div class="acc-inner"><div style="padding-top:10px">
-    <div class="note">Execution stats of the convergence sniper (4-signal engine).</div>
+    <div class="note">Исполнение снайпера: четыре сигнала конвергенции, порог по режиму волатильности.</div>
     <div class="sn-grid" id="sn-grid"></div>
   </div></div></div>
 </div>
 
 <div class="acc">
-  <div class="acc-head" onclick="toggle('acc-tr')"><span class="acc-ico">&#8644;</span>Closed trades<span class="acc-sub" id="tr-count">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-head" onclick="toggle('acc-tr')"><span class="acc-ico">&#8644;</span>Закрытые сделки<span class="acc-sub" id="tr-count">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body" id="acc-tr"><div class="acc-inner"><div style="padding-top:10px">
     <div class="card tbl-wrap"><table class="list">
-      <thead><tr><th>Time</th><th>Sym</th><th>Side</th><th>Entry</th><th>Exit</th><th>P&amp;L</th><th>R</th><th>Reason</th></tr></thead>
+      <thead><tr><th>Время</th><th>Монета</th><th>Сторона</th><th>Вход</th><th>Выход</th><th>P&amp;L</th><th>R</th><th>Причина</th></tr></thead>
       <tbody id="trades"></tbody>
-    </table><div class="empty" id="trades-empty">No closed trades yet - bot waits for signal convergence.</div></div>
+    </table><div class="empty" id="trades-empty">Сделок пока нет — бот ждёт схождения сигналов.</div></div>
   </div></div></div>
 </div>
 
 <div class="acc">
-  <div class="acc-head" onclick="toggle('acc-ev')"><span class="acc-ico">&#9776;</span>Event log<span class="acc-sub" id="ev-count">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-head" onclick="toggle('acc-ev')"><span class="acc-ico">&#9776;</span>Журнал событий<span class="acc-sub" id="ev-count">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body" id="acc-ev"><div class="acc-inner"><div style="padding-top:10px">
     <div class="card" id="events"></div>
   </div></div></div>
 </div>
 
 <div class="acc">
-  <div class="acc-head" onclick="toggle('acc-jr')"><span class="acc-ico">&#9998;</span>Decision journal<span class="acc-sub" id="jr-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-head" onclick="toggle('acc-jr')"><span class="acc-ico">&#9998;</span>Журнал решений<span class="acc-sub" id="jr-sub">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body" id="acc-jr"><div class="acc-inner"><div style="padding-top:10px">
-    <div class="note">Every entry and exit with the numbers that justified it, so a trade can be explained months later.</div>
+    <div class="note">Каждый вход и выход с числами, которые его обосновали — сделку можно объяснить через месяцы.</div>
     <div id="journal"></div>
   </div></div></div>
 </div>
 
 <div class="acc">
-  <div class="acc-head" onclick="toggle('acc-lab')"><span class="acc-ico">&#9878;</span>Regime lab<span class="acc-sub" id="lab-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-head" onclick="toggle('acc-lab')"><span class="acc-ico">&#9878;</span>Лаборатория режимов<span class="acc-sub" id="lab-sub">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body" id="acc-lab"><div class="acc-inner"><div style="padding-top:10px">
-    <div class="note">Paper only: no orders, no cash, no equity. Three arms run on the same hour so the regime filter can be judged against no filter, which the backtest could not settle.</div>
+    <div class="note">Только бумага: ни ордеров, ни денег, ни капитала. Три плеча считаются на одном и том же часе, чтобы сравнить фильтр режима с его отсутствием — бэктест этого не решил.</div>
     <div id="lab"></div>
   </div></div></div>
 </div>
 
 <div class="acc">
-  <div class="acc-head" onclick="toggle('acc-grid')"><span class="acc-ico">&#9638;</span>Grid lab<span class="acc-sub" id="grid-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-head" onclick="toggle('acc-grid')"><span class="acc-ico">&#9638;</span>Лаборатория сетки<span class="acc-sub" id="grid-sub">-</span><span class="acc-chev">&#9654;</span></div>
   <div class="acc-body" id="acc-grid"><div class="acc-inner"><div style="padding-top:10px">
-    <div class="note">Paper only: own $1000 of imaginary capital, 0.5% risk per lot, no orders. Pre-registered in research/GRID_PREREG.md and judged at 100 closed lots, or switched off at a 12% mark-to-market drawdown.</div>
+    <div class="note">Только бумага: свои $1000 воображаемого капитала, 0.5% риска на лот, ордеров нет. Критерии зафиксированы до данных в research/GRID_PREREG.md: судим по 100 закрытым лотам, выключаем при просадке 12%.</div>
     <div id="grid"></div>
   </div></div></div>
 </div>
 
-<div class="upd" style="margin-top:14px">auto-refresh 5s - hl-sniper v1.2</div>
+<div class="upd" style="margin-top:14px">обновление 5с — hl-sniper v1.3</div>
 
 <script>
 function toggle(id){
@@ -277,13 +312,13 @@ function render(s){
   mb.className='badge '+(s.mode==='live'?'live':'paper');
   document.getElementById('halt-badge').style.display=s.halted?'inline-block':'none';
   document.getElementById('dayhalt-badge').style.display=s.day_halt?'inline-block':'none';
-  document.getElementById('upd').textContent='updated '+tm(Date.now()/1000);
+  document.getElementById('upd').textContent='обновлено '+tm(Date.now()/1000);
 
   // status strip
   var blocked=s.halted||s.day_halt;
   document.getElementById('v-bot').textContent=s.status;
   document.getElementById('lamp-bot').className='lamp '+(s.status==='running'?'g':'r');
-  document.getElementById('v-ent').textContent=blocked?'blocked':'allowed';
+  document.getElementById('v-ent').textContent=blocked?'запрещены':'разрешены';
   document.getElementById('lamp-ent').className='lamp '+(blocked?'a':'g');
   document.getElementById('v-dd').textContent=fmt(s.drawdown_pct)+'%';
   document.getElementById('lamp-dd').className='lamp '+(s.drawdown_pct>=10?'r':(s.drawdown_pct>=5?'a':'g'));
@@ -296,69 +331,69 @@ function render(s){
     var px=(s.prices&&s.prices[sym])||0;
     ph+='<div class="pchip"><span class="sym">'+sym+'</span>'+fmt(px, px<10?4:2)+'</div>';
   });
-  document.getElementById('prices').innerHTML=ph||'<div class="empty">waiting for prices...</div>';
+  document.getElementById('prices').innerHTML=ph||'<div class="empty">жду цены...</div>';
 
   // active configuration: the guards are invisible otherwise, and a coin that
   // silently stops trading needs a reason on screen
   var st=s.settings||{}, chips=[];
   function chip(t,k){ chips.push('<span class="chip '+(k||'')+'">'+t+'</span>'); }
-  chip(st.shorts_enabled?'longs + shorts':'longs only', st.shorts_enabled?'':'off');
-  chip(st.atr_trail_mult>0?('trail '+st.atr_trail_mult+'\u00d7ATR'):'no trailing',
+  chip(st.shorts_enabled?'лонги + шорты':'только лонги', st.shorts_enabled?'':'off');
+  chip(st.atr_trail_mult>0?('трейл '+st.atr_trail_mult+'\u00d7ATR'):'без трейла',
        st.atr_trail_mult>0?'on':'');
-  chip('partial '+Math.round((st.partial_ratio||0)*100)+'% at '+st.partial_at_r+'R');
-  chip('stop '+st.atr_stop_mult+'\u00d7ATR');
-  if(st.max_direction_risk_pct!=null) chip('per direction '+fmt(st.max_direction_risk_pct*100,1)+'%');
-  chip('clusters '+(st.clusters||0));
-  if(st.daily_stop_pct!=null) chip('daily stop '+fmt(st.daily_stop_pct*100,1)+'%');
-  if(st.price_poll_sec) chip('poll '+st.price_poll_sec+'s');
-  if(s.consec_losses>0) chip(s.consec_losses+' losses in a row', s.paused?'warn':''); 
+  chip('частичный выход '+Math.round((st.partial_ratio||0)*100)+'% на '+st.partial_at_r+'R');
+  chip('стоп '+st.atr_stop_mult+'\u00d7ATR');
+  if(st.max_direction_risk_pct!=null) chip('на направление '+fmt(st.max_direction_risk_pct*100,1)+'%');
+  chip('кластеров '+(st.clusters||0));
+  if(st.daily_stop_pct!=null) chip('дневной стоп '+fmt(st.daily_stop_pct*100,1)+'%');
+  if(st.price_poll_sec) chip('опрос '+st.price_poll_sec+'с');
+  if(s.consec_losses>0) chip(s.consec_losses+' убытков подряд', s.paused?'warn':''); 
   var bench=s.benched||[];
-  if(bench.length) chip('benched: '+bench.join(', '),'warn');
+  if(bench.length) chip('в бане: '+bench.join(', '),'warn');
   document.getElementById('cfg-row').innerHTML=chips.join('');
   var notes=[];
-  if(s.paused) notes.push('new entries paused');
-  if(s.halted) notes.push('halted: drawdown limit reached');
-  if(s.day_halt) notes.push('daily loss limit reached');
-  if(bench.length) notes.push('benched coins return automatically after the pause');
+  if(s.paused) notes.push('новые входы на паузе');
+  if(s.halted) notes.push('остановлен: достигнут лимит просадки');
+  if(s.day_halt) notes.push('достигнут дневной лимит убытка');
+  if(bench.length) notes.push('монеты из бана вернутся сами после паузы');
   document.getElementById('cfg-note').textContent=notes.join(' \u00b7 ');
 
   // pairs module: the one strategy that survived an out-of-sample split
   var pr=s.pairs||{};
   function pchip(t,k){ return '<span class="chip '+(k||'')+'">'+t+'</span>'; }
   var prow=[];
-  if(pr.enabled){ prow.push(pchip('on','on')); } else { prow.push(pchip('off','off')); }
-  prow.push(pchip((pr.trades||0)+' closed'));
-  if(pr.trades) prow.push(pchip('winrate '+pr.winrate+'%'));
-  prow.push(pchip('realised '+(pr.pnl>=0?'+':'')+'$'+fmt(pr.pnl||0), pr.pnl>0?'on':(pr.pnl<0?'warn':'')));
-  prow.push(pchip('open '+(pr.unrealized>=0?'+':'')+'$'+fmt(pr.unrealized||0)));
-  prow.push(pchip('lookback '+(pr.lookback_h||0)+'h / hold '+(pr.hold_h||0)+'h'));
-  prow.push(pchip((pr.n_pairs||0)+' pairs, '+Math.round((pr.exposure||0)*100)+'%'));
-  if(pr.enabled) prow.push(pchip('next rebalance in '+(pr.next_rebalance_h||0)+'h'));
+  if(pr.enabled){ prow.push(pchip('включён','on')); } else { prow.push(pchip('выключен','off')); }
+  prow.push(pchip((pr.trades||0)+' сделок'));
+  if(pr.trades) prow.push(pchip('винрейт '+pr.winrate+'%'));
+  prow.push(pchip('реализовано '+(pr.pnl>=0?'+':'')+'$'+fmt(pr.pnl||0), pr.pnl>0?'on':(pr.pnl<0?'warn':'')));
+  prow.push(pchip('нереализовано '+(pr.unrealized>=0?'+':'')+'$'+fmt(pr.unrealized||0)));
+  prow.push(pchip('окно '+(pr.lookback_h||0)+'ч / держим '+(pr.hold_h||0)+'ч'));
+  prow.push(pchip((pr.n_pairs||0)+' пары, '+Math.round((pr.exposure||0)*100)+'%'));
+  if(pr.enabled) prow.push(pchip('ребаланс через '+(pr.next_rebalance_h||0)+'ч'));
   document.getElementById('pairs-row').innerHTML=prow.join('');
   // Cost coverage: does the average cycle earn more than the round trip costs?
   // A strategy that is right on direction but wrong on costs still loses money,
   // so the ratio matters more than the P&L number while the sample is small.
   var pc=pr.costs||{};
   var pcc=[];
-  pcc.push(pchip('cost '+fmt(pc.cost_pct)+'% / cycle'));
+  pcc.push(pchip('издержки '+fmt(pc.cost_pct)+'% за цикл'));
   if(pc.samples){
-    pcc.push(pchip('gross avg '+fmt(pc.gross_avg_pct)+'%', pc.gross_avg_pct>0?'on':'warn'));
-    pcc.push(pchip('net avg '+fmt(pc.net_avg_pct)+'%', pc.net_avg_pct>0?'on':'warn'));
+    pcc.push(pchip('валовая '+fmt(pc.gross_avg_pct)+'%', pc.gross_avg_pct>0?'on':'warn'));
+    pcc.push(pchip('чистая '+fmt(pc.net_avg_pct)+'%', pc.net_avg_pct>0?'on':'warn'));
     if(pc.coverage_x===null||pc.coverage_x===undefined){
-      pcc.push(pchip('coverage n/a'));
+      pcc.push(pchip('покрытие n/a'));
     } else {
-      pcc.push(pchip('coverage '+fmt(pc.coverage_x,1)+'x ('+(pc.grade||'?')+')',
+      pcc.push(pchip('покрытие '+fmt(pc.coverage_x,1)+'x ('+(pc.grade||'?')+')',
         pc.grade==='ok'?'on':(pc.grade==='below_cost'?'warn':'')));
     }
-    pcc.push(pchip(pc.samples+' cycles measured'));
+    pcc.push(pchip(pc.samples+' циклов измерено'));
   } else {
-    pcc.push(pchip('no closed cycle yet'));
+    pcc.push(pchip('закрытых циклов пока нет'));
   }
   document.getElementById('pairs-costs').innerHTML=pcc.join('');
   var poh='';
   (pr.open_pairs||[]).forEach(function(q){
     var c=(q.pnl>=0)?'pos':'neg';
-    poh+='<div class="ev"><span>long '+q.long+' @ '+q.long_entry+' &middot; short '+q.short+' @ '+q.short_entry+'</span>'
+    poh+='<div class="ev"><span>лонг '+q.long+' @ '+q.long_entry+' &middot; шорт '+q.short+' @ '+q.short_entry+'</span>'
        +'<span class="'+c+'">'+(q.pnl>=0?'+':'')+'$'+fmt(q.pnl)+' &middot; '+q.hours+'h</span></div>';
     // why this pair, captured at entry rather than reconstructed later
     var qc=q.context||{}, bits=[];
@@ -371,16 +406,16 @@ function render(s){
     if(bits.length) poh+='<div class="ev" style="opacity:.6;font-size:11px">'+bits.join(' &middot; ')+'</div>';
   });
   (pr.recent||[]).slice(0,4).forEach(function(q){
-    poh+='<div class="ev"><span>closed '+q.long+'/'+q.short+'</span>'
+    poh+='<div class="ev"><span>закрыта '+q.long+'/'+q.short+'</span>'
        +'<span class="'+(q.pnl>=0?'pos':'neg')+'">'+(q.pnl>=0?'+':'')+'$'+fmt(q.pnl)+'</span></div>';
   });
   document.getElementById('pairs-open').innerHTML=poh;
-  document.getElementById('pairs-note').textContent=pr.last_error?('last error: '+pr.last_error):'';
+  document.getElementById('pairs-note').textContent=pr.last_error?('последняя ошибка: '+pr.last_error):'';
 
   // equity
   document.getElementById('eq').textContent='$'+fmt(s.equity);
   var dl=document.getElementById('eq-delta');
-  dl.textContent=usd(s.day_pnl)+' ('+(s.day_pnl_pct>=0?'+':'')+fmt(s.day_pnl_pct)+'%) today';
+  dl.textContent=usd(s.day_pnl)+' ('+(s.day_pnl_pct>=0?'+':'')+fmt(s.day_pnl_pct)+'%) за сутки';
   dl.className='eq-delta '+cls(s.day_pnl);
   var sw=document.getElementById('spark-wrap');
   if(s.equity_history&&s.equity_history.length>1){
@@ -392,20 +427,20 @@ function render(s){
   var sd=document.getElementById('s-day');
   sd.textContent=usd(s.day_pnl); sd.className='v '+cls(s.day_pnl);
   document.getElementById('s-risk').textContent='$'+fmt(s.open_risk);
-  document.getElementById('s-risk-h').textContent='cap 6% - '+fmt(s.open_risk_pct)+'%';
+  document.getElementById('s-risk-h').textContent='лимит 6% — '+fmt(s.open_risk_pct)+'%';
   document.getElementById('s-winrate').textContent=fmt(s.winrate,1)+'%';
-  document.getElementById('s-wl').textContent=(s.wins||0)+'W / '+(s.losses||0)+'L';
+  document.getElementById('s-wl').textContent=(s.wins||0)+'П / '+(s.losses||0)+'У';
   document.getElementById('s-avgr').textContent=fmt(s.avg_r);
   document.getElementById('s-kelly').textContent=fmt(s.kelly_risk_pct)+'%';
   var ss=s.sniper_stats||{};
   document.getElementById('s-snipes').textContent=ss.total_snipes!==undefined?ss.total_snipes:'-';
-  document.getElementById('s-snipes-h').textContent=(ss.strong_snipes||0)+' strong - '+fmt(ss.avg_slippage_bps||0,1)+' bps avg slip';
+  document.getElementById('s-snipes-h').textContent=(ss.strong_snipes||0)+' сильных — '+fmt(ss.avg_slippage_bps||0,1)+' bps средний слиппедж';
   document.getElementById('s-uptime').textContent=hm(s.uptime_sec||0);
   document.getElementById('s-started').textContent=s.started?tm(s.started):'-';
 
   // positions
   var pos=s.positions||[];
-  document.getElementById('pos-count').textContent=pos.length+' open';
+  document.getElementById('pos-count').textContent=pos.length+' открыто';
   var ph2='';
   pos.forEach(function(p){
     var px=(s.prices&&s.prices[p.symbol])||p.entry;
@@ -422,26 +457,26 @@ function render(s){
       '<div class="bar"><div class="fill" style="width:'+(frac*100).toFixed(1)+'%"></div>'+
       '<div class="tick" style="left:'+(entryF*100).toFixed(1)+'%"></div></div>'+
       '<div class="pos-rows">'+
-      '<div><span class="k">Entry</span><span class="v">'+fmt(p.entry,p.entry<10?4:2)+'</span></div>'+
-      '<div><span class="k">Price</span><span class="v">'+fmt(px,px<10?4:2)+'</span></div>'+
-      '<div><span class="k">Size</span><span class="v">'+fmt(p.size,4)+'</span></div>'+
-      '<div><span class="k">Stop</span><span class="v neg">'+fmt(p.stop,p.stop<10?4:2)+'</span></div>'+
-      '<div><span class="k">Target</span><span class="v pos">'+fmt(p.target,p.target<10?4:2)+'</span></div>'+
-      '<div><span class="k">Unreal %</span><span class="v '+cls(unreal)+'">'+fmt(p.entry?unreal/(p.entry*p.size)*100:0)+'%</span></div>'+
+      '<div><span class="k">Вход</span><span class="v">'+fmt(p.entry,p.entry<10?4:2)+'</span></div>'+
+      '<div><span class="k">Цена</span><span class="v">'+fmt(px,px<10?4:2)+'</span></div>'+
+      '<div><span class="k">Размер</span><span class="v">'+fmt(p.size,4)+'</span></div>'+
+      '<div><span class="k">Стоп</span><span class="v neg">'+fmt(p.stop,p.stop<10?4:2)+'</span></div>'+
+      '<div><span class="k">Цель</span><span class="v pos">'+fmt(p.target,p.target<10?4:2)+'</span></div>'+
+      '<div><span class="k">Нереал %</span><span class="v '+cls(unreal)+'">'+fmt(p.entry?unreal/(p.entry*p.size)*100:0)+'%</span></div>'+
       '</div>'+posCtx(p.context)+'</div>';
   });
-  document.getElementById('positions').innerHTML=ph2||'<div class="empty">no open positions</div>';
+  document.getElementById('positions').innerHTML=ph2||'<div class="empty">открытых позиций нет</div>';
 
   // sniper stats
-  document.getElementById('sn-sub').textContent=(ss.total_snipes||0)+' snipes';
-  var cells=[['Executed',ss.total_snipes],['Rejected',ss.rejected_snipes],['Strong',ss.strong_snipes],['Avg slip bps',ss.avg_slippage_bps]];
+  document.getElementById('sn-sub').textContent=(ss.total_snipes||0)+' снайпов';
+  var cells=[['Исполнено',ss.total_snipes],['Отклонено',ss.rejected_snipes],['Сильных',ss.strong_snipes],['Слиппедж, bps',ss.avg_slippage_bps]];
   var sh='';
   cells.forEach(function(c){ sh+='<div class="sn"><div class="t">'+c[0]+'</div><div class="v">'+(c[1]!==undefined?fmt(c[1],1):'-')+'</div></div>'; });
   document.getElementById('sn-grid').innerHTML=sh;
 
   // trades
   var tr=s.trades||[];
-  document.getElementById('tr-count').textContent=(s.trades_total||0)+' total';
+  document.getElementById('tr-count').textContent=(s.trades_total||0)+' всего';
   document.getElementById('trades-empty').style.display=tr.length?'none':'block';
   var th='';
   tr.forEach(function(t){
@@ -455,10 +490,10 @@ function render(s){
 
   // events
   var ev=s.events||[];
-  document.getElementById('ev-count').textContent=ev.length+' events';
+  document.getElementById('ev-count').textContent=ev.length+' событий';
   var eh='';
   ev.forEach(function(e){ eh+='<div class="ev">'+eventLine(e)+'</div>'; });
-  document.getElementById('events').innerHTML=eh||'<div class="empty">no events yet</div>';
+  document.getElementById('events').innerHTML=eh||'<div class="empty">событий пока нет</div>';
 
   // decision journal, newest first: the numbers behind each decision
   var jr=s.journal||[], jc=s.journal_counts||{};
@@ -481,27 +516,27 @@ function render(s){
       (bits.length?' <span style="color:var(--dim)">['+bits.join(', ')+']</span>':'')+
       '</span></div>';
   });
-  document.getElementById('journal').innerHTML=jh||'<div class="empty">journal is empty</div>';
+  document.getElementById('journal').innerHTML=jh||'<div class="empty">журнал пуст</div>';
 
   // paper regime lab: three arms, one hour, no money involved
   var lab=s.lab||null;
   if(lab){
     var ph=lab.phase||{}, arms=lab.arms||{}, ah='';
     document.getElementById('lab-sub').textContent=
-      (lab.enabled?'on':'off')+' / '+(ph.trend||'-')+'/'+(ph.vol||'-')+
+      (lab.enabled?'вкл':'выкл')+' / '+(ph.trend||'-')+'/'+(ph.vol||'-')+
       ' / '+fmt(lab.hours_seen,0)+'h';
     ah+='<div class="cfg" style="margin-bottom:8px">'+
-      pchip('phase '+(ph.trend||'-')+'/'+(ph.vol||'-'), inCell(ph)?'pos':'') +
+      pchip('фаза '+(ph.trend||'-')+'/'+(ph.vol||'-'), inCell(ph)?'pos':'') +
       pchip('ER '+(ph.er===undefined?'-':ph.er)) +
       pchip('ATR% '+(ph.atr_pct===undefined?'-':ph.atr_pct)) +
       pchip('pct '+(ph.pct===undefined?'-':ph.pct)) +
-      pchip('hours '+fmt(lab.hours_seen,0)) +
-      pchip('age '+(lab.age_sec===null?'-':hm(lab.age_sec)))+
+      pchip('часов '+fmt(lab.hours_seen,0)) +
+      pchip('возраст '+(lab.age_sec===null?'-':hm(lab.age_sec)))+
       // a lab that cannot read its file forgets every open trade on restart,
       // so the file itself is on the card, not only the numbers in memory
-      pchip(lab.state&&lab.state.exists?'state file ok':'state file MISSING',
+      pchip(lab.state&&lab.state.exists?'файл состояния есть':'ФАЙЛ СОСТОЯНИЯ ПРОПАЛ',
             lab.state&&lab.state.exists?'':'neg')+
-      pchip(lab.restored?'restored':'cold start')+'</div>';
+      pchip(lab.restored?'восстановлено':'холодный старт')+'</div>';
     ['cell','control','cell_all'].forEach(function(a){
       var st=arms[a]||{}, open=(lab.open&&lab.open[a])||[];
       ah+='<div class="ev"><span><b>'+a+'</b> n '+fmt(st.n,0)+
@@ -519,40 +554,101 @@ function render(s){
   var gl=s.grid||null;
   if(gl){
     document.getElementById('grid-sub').textContent=
-      (gl.enabled?'on':'off')+' / '+fmt(gl.open_count,0)+' open / '+
-      fmt(gl.lots_closed,0)+' lots';
+      (gl.enabled?'вкл':'выкл')+' / '+fmt(gl.open_count,0)+' открыто / '+
+      fmt(gl.lots_closed,0)+' закрыто';
     var ddp=(gl.mtm_max_dd_pct||0), gh='';
     gh+='<div class="cfg" style="margin-bottom:8px">'+
-      pchip('equity $'+fmt(gl.equity), (gl.equity||0)>=1000?'on':'off')+
-      pchip('mtm dd '+fmt(ddp,2)+'%', ddp>8?'warn':'')+
-      pchip('under water '+fmt(gl.pct_time_below_start,1)+'%')+
-      pchip('open risk $'+fmt(gl.open_risk_usd)+' / '+fmt(gl.open_risk_pct,2)+'%')+
-      pchip('hours '+fmt(gl.hours,0))+
-      pchip(gl.restored?'restored':'cold start', gl.restored?'':'off')+'</div>';
-    gh+='<div class="ev"><span><b>lots</b> '+fmt(gl.lots_closed,0)+
+      pchip('капитал $'+fmt(gl.equity), (gl.equity||0)>=1000?'on':'off')+
+      pchip('просадка МТМ '+fmt(ddp,2)+'%', ddp>8?'warn':'')+
+      pchip('под водой '+fmt(gl.pct_time_below_start,1)+'%')+
+      pchip('риск открыт $'+fmt(gl.open_risk_usd)+' / '+fmt(gl.open_risk_pct,2)+'%')+
+      pchip('часов '+fmt(gl.hours,0))+
+      pchip(gl.restored?'восстановлена':'с холодного старта', gl.restored?'':'off')+'</div>';
+    gh+='<div class="ev"><span><b>лоты</b> '+fmt(gl.lots_closed,0)+
       ' WR '+fmt(gl.winrate_pct,1)+'%'+
       ' PF '+(gl.profit_factor===null||gl.profit_factor===undefined?'-':fmt(gl.profit_factor,2))+
       ' E '+fmt(gl.expectancy_pct_per_lot,3)+'%/lot'+
-      ' realised $'+fmt(gl.realized_usd)+' costs $'+fmt(gl.costs_usd)+
-      ' <span style="color:var(--dim)">lot $'+fmt(gl.lot_usd)+'</span></span></div>';
+      ' реализовано $'+fmt(gl.realized_usd)+' издержки $'+fmt(gl.costs_usd)+
+      ' <span style="color:var(--dim)">лот $'+fmt(gl.lot_usd)+'</span></span></div>';
     (gl.open||[]).forEach(function(p){
       var up=(p.unreal_pct>=0), col=up?'var(--green)':'var(--red)';
       gh+='<div class="ev"><span><b>'+p.coin+'</b> '+
-        '<span style="color:var(--dim)">entry</span> '+fmt(p.entry,6)+
+        '<span style="color:var(--dim)">вход</span> '+fmt(p.entry,6)+
         ' <span style="color:'+col+'">'+(up?'+':'')+fmt(p.unreal_pct,2)+'%</span>'+
-        ' <span style="color:var(--dim)">'+fmt(p.age_h,1)+'h, target +'+
-        fmt(p.to_target_pct,2)+'%, stop '+fmt(p.to_stop_pct,2)+'%</span></span></div>';
+        ' <span style="color:var(--dim)">'+fmt(p.age_h,1)+'ч, цель +'+
+        fmt(p.to_target_pct,2)+'%, стоп '+fmt(p.to_stop_pct,2)+'%</span></span></div>';
     });
-    if(!(gl.open||[]).length) gh+='<div class="ev"><span style="color:var(--dim)">no open lots</span></div>';
+    if(!(gl.open||[]).length) gh+='<div class="ev"><span style="color:var(--dim)">открытых лотов нет</span></div>';
     if(gl.last_error) gh+='<div class="ev"><span style="color:var(--red)">'+gl.last_error+'</span></div>';
     document.getElementById('grid').innerHTML=gh;
   }
+
+  // strategy and module registry: one row per decision the bot has taken out of
+  // the game, with the measurement that put it there and its live numbers.
+  var sm=s.strategies||null;
+  if(sm){
+    var LAB={on:['работает','on'],paper:['бумажная','warn'],off:['выключен','off'],
+             rejected:['отклонён','neg'],missing:['нет','off']};
+    document.getElementById('strat-sum').innerHTML=[
+      pchip('всего '+sm.total), pchip('работает '+sm.working,'on'),
+      pchip('бумажных '+sm.paper), pchip('выключено '+sm.off,'off'),
+      pchip('отклонено '+sm.rejected,'neg'), pchip('нет '+sm.missing)
+    ].join('');
+    var groups=[['strategy','Стратегии'],['filter','Фильтры'],
+                ['risk','Риск и лимиты'],['infra','Инфраструктура']];
+    var sh='';
+    groups.forEach(function(g){
+      var rows=(sm.items||[]).filter(function(i){return i.cat===g[0];});
+      if(!rows.length)return;
+      sh+='<div class="sec-cap" style="margin:14px 0 8px">'+g[1]+'</div><div class="strat-list">';
+      rows.forEach(function(i){
+        var L=LAB[i.status]||[i.status,''];
+        sh+='<div class="strat"><div class="strat-top"><span class="sdot '+L[1]+'"></span>'+
+          '<span class="sname">'+i.name+'</span><span class="sstat '+L[1]+'">'+L[0]+'</span></div>'+
+          (i.live?'<div class="slive">'+i.live+
+            (i.live_detail?' <span class="coin-dim">· '+i.live_detail+'</span>':'')+'</div>':'')+
+          '<div class="sev">'+i.evidence+'</div></div>';
+      });
+      sh+='</div>';
+    });
+    document.getElementById('strat').innerHTML=sh;
+  }
+
+  // per-coin breakdown: the scanned picture, not only the booked trades
+  var cn=s.coins||[];
+  document.getElementById('coin-sub').textContent=cn.length+' в разборе';
+  var ch='<div class="coin-row coin-hd"><div>Монета</div><div>Цена / 24ч</div>'+
+         '<div>Score</div><div>ADX</div><div>Экспозиция</div></div>';
+  cn.forEach(function(c){
+    var chg=(c.chg_24h===null||c.chg_24h===undefined)?''
+      :'<span class="'+(c.chg_24h>=0?'pos':'neg')+'">'+(c.chg_24h>=0?'+':'')+fmt(c.chg_24h,2)+'%</span>';
+    var expo='<span class="coin-dim">—</span>';
+    if(c.pos) expo='<span class="dir '+(c.pos==='long'?'long':'short')+'">'+c.pos.toUpperCase()+'</span>';
+    else if(c.grid_lots) expo='<span class="dir long">СЕТКА '+c.grid_lots+'</span>';
+    else if(c.pair) expo='<span class="dir '+(c.pair==='L'?'long':'short')+'">ПАРА '+c.pair+'</span>';
+    var tags=[];
+    if(c.grid_lots&&c.grid_unreal_pct!==null&&c.grid_unreal_pct!==undefined)
+      tags.push('лот '+(c.grid_unreal_pct>=0?'+':'')+fmt(c.grid_unreal_pct,2)+'%');
+    if(c.atr_pct!==null&&c.atr_pct!==undefined) tags.push('ATR '+fmt(c.atr_pct,2)+'%');
+    if(c.vol_usd) tags.push('объём $'+fmt(c.vol_usd/1e6,1)+'M');
+    if(c.noise) tags.push(c.noise);
+    if(c.benched) tags.push('в бане');
+    if(c.tradable===false) tags.push('не торгуется');
+    var sub=(c.note?c.note:'')+(c.note&&tags.length?' · ':'')+tags.join(' · ');
+    ch+='<div class="coin-row"><div class="coin-sym">'+c.sym+'</div>'+
+      '<div>'+fmt(c.price,(c.price&&c.price<10)?4:2)+' '+chg+'</div>'+
+      '<div>'+((c.score===null||c.score===undefined)?'<span class="coin-dim">—</span>':fmt(c.score,2))+'</div>'+
+      '<div>'+((c.adx===null||c.adx===undefined)?'<span class="coin-dim">—</span>':fmt(c.adx,0))+'</div>'+
+      '<div>'+expo+'</div></div>'+
+      (sub?'<div class="sev" style="padding:0 2px 7px">'+sub+'</div>':'');
+  });
+  document.getElementById('coins').innerHTML=ch;
 
 }
 
 function load(){
   fetch('/status',{cache:'no-store'}).then(function(r){return r.json()}).then(render).catch(function(){
-    document.getElementById('upd').textContent='connection lost - retrying...';
+    document.getElementById('upd').textContent='связь потеряна — повторяю...';
     document.getElementById('dot').className='dot off';
   });
 }
