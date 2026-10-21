@@ -77,8 +77,8 @@ CATALOG = (
          evidence="объём, спред, шум-класс; пул обновляется по расписанию"),
     dict(id="blacklist", cat=CAT_FILTER, name="Автоблэклист монет", status=ON,
          evidence="2 стопа за 30 дней -> пауза 14 дней, как у него"),
-    dict(id="chart_blocks", cat=CAT_FILTER, name="Чарт-блоки (сопротивление, истощение)", status=MISSING,
-         evidence="у него пауза лотов под сопротивлением в ATR и на свечах истощения; у нас нет - замер впереди"),
+    dict(id="chart_blocks", cat=CAT_FILTER, name="Блоки входа по графику (каскад, сопротивление)", status=REJECTED,
+         evidence="наш замер 21.10 (#23): PF 1.31-1.39 против 1.385 базы, стопы 4.4 на 100 лотов против 4.2 - режут хорошие входы наравне с плохими"),
     dict(id="news", cat=CAT_FILTER, name="Новостной фильтр RSS -> LLM", status=MISSING,
          evidence="не реализовано; требует ключа LLM и ленты, в paper не влияет на P&L"),
 

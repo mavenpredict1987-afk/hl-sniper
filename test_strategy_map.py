@@ -47,6 +47,14 @@ check("every status is known",
       all(i["status"] in (strategy_map.ON, strategy_map.PAPER, strategy_map.OFF,
                           strategy_map.REJECTED, strategy_map.MISSING) for i in items),
       sorted({i["status"] for i in items}))
+by_id = {i["id"]: i for i in items}
+check("chart blocks are measured, not pending",
+      by_id["chart_blocks"]["status"] == strategy_map.REJECTED
+      and "21.10" in by_id["chart_blocks"]["evidence"],
+      by_id["chart_blocks"]["status"])
+check("rejected entries cite their own measurement",
+      all(any(ch.isdigit() for ch in i["evidence"]) for i in items
+          if i["status"] == strategy_map.REJECTED))
 check("catalog covers all four categories",
       all(any(i["cat"] == c for i in items) for c in strategy_map.CAT_ORDER))
 
