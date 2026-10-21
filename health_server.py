@@ -1,7 +1,14 @@
+import gzip
 import json
 import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# The dashboard polls /status every five seconds, and the payload has grown to
+# ~90 KB (equity curve, trades, the per-coin table). The page is viewed on a
+# phone, so it is compressed: the same JSON is ~10 KB gzipped. Below this size
+# the framing overhead is not worth it.
+GZIP_MIN_BYTES = 1024
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -9,9 +16,18 @@ class HealthHandler(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype="application/json"):
         data = body.encode() if isinstance(body, str) else body
+        accepts = "gzip" in (self.headers.get("Accept-Encoding") or "")
+        if accepts and len(data) >= GZIP_MIN_BYTES:
+            data = gzip.compress(data, compresslevel=5)
+            encoding = "gzip"
+        else:
+            encoding = None
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        if encoding:
+            self.send_header("Content-Encoding", encoding)
+            self.send_header("Vary", "Accept-Encoding")
         self.end_headers()
         self.wfile.write(data)
 
