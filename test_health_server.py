@@ -81,6 +81,19 @@ check("dashboard is compressed for browsers",
       and b"<html" in gzip.decompress(gbody).lower(),
       (gcode, gheaders.get("Content-Encoding"), len(gbody)))
 
+# the registry panel is a tabbed, collapsed list: pick a category, tap a row only
+# if you want the measurement. A regression to the old wall-of-cards scroll is a
+# UI regression the server test can still catch, because it ships the page.
+page = open(os.path.join(HERE, "dashboard.html"), encoding="utf-8").read()
+check("registry has category tabs", 'id="strat-tabs"' in page)
+check("registry rows are collapsed by default", ".strat-body{display:none" in page)
+check("registry rows expand on tap",
+      "function toggleStrat" in page and "stOpen[id]=!stOpen[id]" in page)
+check("registry tab survives the 5s refresh",
+      "var stTab='strategy'" in page and "stLast=sm" in page)
+check("old always-expanded card wall is gone",
+      'class="sec-cap" style="margin:14px 0 8px"' not in page)
+
 code, headers, body = get("/nope")
 check("unknown path is 404", code == 404, code)
 

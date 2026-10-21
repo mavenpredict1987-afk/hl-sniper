@@ -111,6 +111,21 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
 .sstat.on{color:var(--green)}.sstat.warn{color:var(--amber)}.sstat.neg{color:var(--red)}
 .slive{font-size:11.5px;margin-top:5px}
 .sev{font-size:11px;color:var(--dim);margin-top:4px;line-height:1.45}
+
+/* the registry is a tabbed list, not a wall of cards: pick a category, then tap
+   a row only if you want the measurement behind it */
+.tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 0;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:none;font-size:11.5px;font-weight:700;padding:6px 11px;border-radius:9px;border:1px solid var(--line);background:var(--card2);color:var(--dim);white-space:nowrap}
+.tab .tn{font-weight:800;opacity:.6;margin-left:5px}
+.tab.on{color:var(--text);border-color:rgba(92,242,201,.45);background:rgba(92,242,201,.09)}
+.tab.on .tn{opacity:.85}
+.strat{cursor:pointer;padding:9px 12px;-webkit-tap-highlight-color:transparent}
+.strat-row{display:flex;align-items:center;gap:8px}
+.schev{font-size:9px;color:var(--dim);transition:transform .15s;flex:none}
+.strat.open .schev{transform:rotate(90deg)}
+.strat-body{display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+.strat.open .strat-body{display:block}
 /* per-coin breakdown */
 .coin-row{display:grid;grid-template-columns:1.1fr 1fr .6fr .5fr .95fr;gap:6px;align-items:center;padding:7px 2px;border-bottom:1px solid var(--line);font-size:11.5px}
 .coin-row:last-child{border-bottom:0}
@@ -178,7 +193,8 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
 <div class="card">
   <div class="sec-cap">Стратегии и модули — что работает, а что нет</div>
   <div class="cfg" id="strat-sum"></div>
-  <div style="margin-top:10px" id="strat"></div>
+  <div class="tabs" id="strat-tabs" style="margin-top:10px"></div>
+  <div style="margin-top:8px" id="strat"></div>
   <div class="note">Статус ставится по замеру, а не по замыслу. «Отклонён» значит стратегия проверена и провалила свой же критерий — второй раз в неё не идём. «Нет» значит идея названа, кода нет. Живые числа берутся из того же /status, что и остальная панель, поэтому расхождений быть не может.</div>
 </div>
 
@@ -269,6 +285,40 @@ function clock(ts){ try{ return new Date(Number(ts)*1000).toLocaleTimeString([],
 function when(e){ if(e&&typeof e==='object'&&e.ts!==undefined)return clock(e.ts); return (e&&e.time)?e.time:''; }
 function eventLine(e){ if(e&&typeof e==='object')return (e.ts!==undefined?clock(e.ts)+' | ':'')+(e.msg||''); return String(e); }
 function cls(x){ return x>0?'pos':(x<0?'neg':'neu'); }
+
+// Registry of every strategy and module: tabs by category, one compact row per
+// decision, tap to open the measurement that put it there. The state lives
+// outside the render loop so the open row and the chosen tab survive the 5s
+// refresh instead of snapping back to the top.
+var STABS=[['strategy','Стратегии'],['filter','Фильтры'],['risk','Риск'],['infra','Инфра']];
+var SLAB={on:['работает','on'],paper:['бумажная','warn'],off:['выключен','off'],
+          rejected:['отклонён','neg'],missing:['нет','off']};
+var stTab='strategy', stOpen={}, stLast=null;
+function renderStrategies(){
+  var sm=stLast; if(!sm)return;
+  var items=sm.items||[];
+  document.getElementById('strat-tabs').innerHTML=STABS.map(function(g){
+    var n=items.filter(function(i){return i.cat===g[0];}).length;
+    return '<div class="tab'+(stTab===g[0]?' on':'')+'" onclick="setStTab(\''+g[0]+'\')">'+
+      g[1]+'<span class="tn">'+n+'</span></div>';
+  }).join('');
+  var rows=items.filter(function(i){return i.cat===stTab;});
+  var sh='<div class="strat-list">';
+  rows.forEach(function(i){
+    var L=SLAB[i.status]||[i.status,''];
+    sh+='<div class="strat'+(stOpen[i.id]?' open':'')+'">'+
+      '<div class="strat-row" onclick="toggleStrat(\''+i.id+'\')">'+
+      '<span class="sdot '+L[1]+'"></span><span class="sname">'+i.name+'</span>'+
+      '<span class="sstat '+L[1]+'">'+L[0]+'</span><span class="schev">&#9654;</span></div>'+
+      (i.live?'<div class="slive">'+i.live+
+        (i.live_detail?' <span class="coin-dim">· '+i.live_detail+'</span>':'')+'</div>':'')+
+      '<div class="strat-body"><div class="sev">'+i.evidence+'</div></div></div>';
+  });
+  sh+='</div>';
+  document.getElementById('strat').innerHTML=sh;
+}
+function setStTab(c){ stTab=c; renderStrategies(); }
+function toggleStrat(id){ stOpen[id]=!stOpen[id]; renderStrategies(); }
 
 // What the bot knew when it opened the position, as opposed to what the chart
 // says now. Stored with the position so it survives a restart.
@@ -583,35 +633,17 @@ function render(s){
     document.getElementById('grid').innerHTML=gh;
   }
 
-  // strategy and module registry: one row per decision the bot has taken out of
-  // the game, with the measurement that put it there and its live numbers.
+  // strategy and module registry: summary counts stay visible, the list itself
+  // is tabbed and collapsed (see renderStrategies above)
   var sm=s.strategies||null;
   if(sm){
-    var LAB={on:['работает','on'],paper:['бумажная','warn'],off:['выключен','off'],
-             rejected:['отклонён','neg'],missing:['нет','off']};
     document.getElementById('strat-sum').innerHTML=[
       pchip('всего '+sm.total), pchip('работает '+sm.working,'on'),
       pchip('бумажных '+sm.paper), pchip('выключено '+sm.off,'off'),
       pchip('отклонено '+sm.rejected,'neg'), pchip('нет '+sm.missing)
     ].join('');
-    var groups=[['strategy','Стратегии'],['filter','Фильтры'],
-                ['risk','Риск и лимиты'],['infra','Инфраструктура']];
-    var sh='';
-    groups.forEach(function(g){
-      var rows=(sm.items||[]).filter(function(i){return i.cat===g[0];});
-      if(!rows.length)return;
-      sh+='<div class="sec-cap" style="margin:14px 0 8px">'+g[1]+'</div><div class="strat-list">';
-      rows.forEach(function(i){
-        var L=LAB[i.status]||[i.status,''];
-        sh+='<div class="strat"><div class="strat-top"><span class="sdot '+L[1]+'"></span>'+
-          '<span class="sname">'+i.name+'</span><span class="sstat '+L[1]+'">'+L[0]+'</span></div>'+
-          (i.live?'<div class="slive">'+i.live+
-            (i.live_detail?' <span class="coin-dim">· '+i.live_detail+'</span>':'')+'</div>':'')+
-          '<div class="sev">'+i.evidence+'</div></div>';
-      });
-      sh+='</div>';
-    });
-    document.getElementById('strat').innerHTML=sh;
+    stLast=sm;
+    renderStrategies();
   }
 
   // per-coin breakdown: the scanned picture, not only the booked trades
