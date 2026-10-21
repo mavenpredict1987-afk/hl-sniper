@@ -141,7 +141,7 @@ def build(status):
         failed = tg.get("failed", 0)
         err = (tg.get("last_error") or "").strip()
         alert_live = dict(
-            value="Telegram · отправлено %d" % sent,
+            value="Telegram · отправлено %d с запуска" % sent,
             detail="ошибок %d%s" % (failed, (", последняя: " + err) if err else ""))
 
     live = {
