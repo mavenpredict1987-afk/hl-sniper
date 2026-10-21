@@ -106,7 +106,7 @@ CATALOG = (
     dict(id="state", cat=CAT_INFRA, name="Сохранение состояния", status=ON,
          evidence="позиции и лоты переживают рестарт; состояние на томе Railway"),
     dict(id="alerts", cat=CAT_INFRA, name="Оповещения", status=OFF,
-         evidence="Telegram подключён, но выключен - нужен токен и чат"),
+         evidence="Telegram: вход, выход, стопы и старт бота; токен и чат в переменных Railway"),
     dict(id="ai_shadow", cat=CAT_INFRA, name="ИИ-аналитик (shadow)", status=MISSING,
          evidence="оценивает входы, не влияет на решения - не реализовано"),
     dict(id="alo", cat=CAT_INFRA, name="ALO / post-only ордера", status=MISSING,
@@ -128,6 +128,21 @@ def build(status):
     sn = st.get("sniper_stats") or {}
     coins = st.get("coins") or []
     equity = st.get("equity")
+    # Alert channel: configured comes from the env, delivery counters from
+    # utils, so the row shows the channel that is actually running.
+    tg = st.get("telegram") or {}
+    configured = bool(tg["configured"]) if "configured" in tg else bool(
+        config.TELEGRAM_TOKEN and config.TELEGRAM_CHAT_ID)
+    if not configured:
+        alert_live = dict(value="Telegram не настроен",
+                          detail="нет TELEGRAM_TOKEN или TELEGRAM_CHAT_ID")
+    else:
+        sent = tg.get("sent", 0)
+        failed = tg.get("failed", 0)
+        err = (tg.get("last_error") or "").strip()
+        alert_live = dict(
+            value="Telegram · отправлено %d" % sent,
+            detail="ошибок %d%s" % (failed, (", последняя: " + err) if err else ""))
 
     live = {
         "pairs": dict(
@@ -163,7 +178,7 @@ def build(status):
                               detail="у друга 6"),
         "kelly": dict(value="f=%s" % pct(config.KELLY_FRACTION, 2),
                       detail="ставка %s%% капитала" % pct(st.get("kelly_risk_pct"), 2)),
-        "alerts": dict(value="Telegram", detail="не настроен - токена нет"),
+        "alerts": alert_live,
         "cost_gate": dict(value="порог x%s" % pct(settings.get("min_rr_after_costs"), 1),
                           detail="базовая стоимость цикла %s%%" % pct(
                               100 * (settings.get("cost_pct_base") or 0), 3)),
@@ -186,8 +201,8 @@ def build(status):
             item["status"] = OFF
         if item["id"] == "grid" and grid.get("enabled") is False:
             item["status"] = OFF
-        if item["id"] == "alerts" and config.TELEGRAM_TOKEN:
-            item["status"] = ON
+        if item["id"] == "alerts":
+            item["status"] = ON if configured else OFF
         items.append(item)
 
     counts = {CAT_STRATEGY: {}, CAT_FILTER: {}, CAT_RISK: {}, CAT_INFRA: {}}

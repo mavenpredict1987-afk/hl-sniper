@@ -1,5 +1,8 @@
 import logging
+import time
+
 import requests
+from requests import RequestException
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 logger = logging.getLogger("hl_sniper")
@@ -12,16 +15,53 @@ def setup_logging():
         handlers=[logging.StreamHandler()])
 
 
+# Delivery counters, so the panel can show whether alerts are actually going
+# out instead of repeating a hardcoded "not configured" line from the day the
+# token was still missing.
+TELEGRAM_STATE = {"sent": 0, "failed": 0, "last_error": "", "last_ok_ts": 0.0}
+
+
+def telegram_status():
+    """What the alert channel looks like right now, without leaking the token."""
+    return {
+        "configured": bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID),
+        "token_set": bool(TELEGRAM_TOKEN),
+        "chat_set": bool(TELEGRAM_CHAT_ID),
+        "sent": TELEGRAM_STATE["sent"],
+        "failed": TELEGRAM_STATE["failed"],
+        "last_error": TELEGRAM_STATE["last_error"],
+        "last_ok_ts": TELEGRAM_STATE["last_ok_ts"],
+    }
+
+
 def send_telegram(text):
+    """Send one alert. Returns True only when Telegram accepted the message.
+
+    The old version ignored the HTTP response, so a revoked token or a wrong
+    chat id looked exactly like success and the panel had no way to tell.
+    """
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
+        TELEGRAM_STATE["last_error"] = "нет токена или чата"
+        return False
     try:
-        requests.post(
+        r = requests.post(
             "https://api.telegram.org/bot%s/sendMessage" % TELEGRAM_TOKEN,
             json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
             timeout=8)
-    except requests.RequestException:
-        logger.warning("telegram alert failed")
+        ok = bool(getattr(r, "ok", False))
+        if not ok:
+            TELEGRAM_STATE["last_error"] = "HTTP %s" % getattr(r, "status_code", "?")
+    except RequestException as exc:
+        ok = False
+        TELEGRAM_STATE["last_error"] = type(exc).__name__
+    if ok:
+        TELEGRAM_STATE["sent"] += 1
+        TELEGRAM_STATE["last_error"] = ""
+        TELEGRAM_STATE["last_ok_ts"] = time.time()
+    else:
+        TELEGRAM_STATE["failed"] += 1
+        logger.warning("telegram alert failed: %s", TELEGRAM_STATE["last_error"])
+    return ok
 
 
 def money(x):

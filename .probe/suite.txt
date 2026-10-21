@@ -1,0 +1,668 @@
+telegram alert failed: HTTP 403
+telegram alert failed: RequestException
+PASS  no token means no send
+PASS  no token means no HTTP call
+PASS  missing configuration is reported :: нет токена или чата
+PASS  accepted message returns True
+PASS  accepted message is counted :: 1
+PASS  accepted message clears the old error
+PASS  accepted message stamps the delivery time :: 1792554602.0204704
+PASS  message goes to the configured chat :: {'chat_id': '42', 'text': 'hello', 'parse_mode': 'HTML'}
+PASS  the token never appears in the status dict :: {'configured': True, 'token_set': True, 'chat_set': True, 'sent': 1, 'failed': 0, 'last_error': '', 'last_ok_ts': 1792554602.0204704}
+PASS  rejected message returns False
+PASS  rejected message is counted as a failure :: 1
+PASS  rejected message records the HTTP code :: HTTP 403
+PASS  rejected message does not count as delivered
+PASS  network error returns False
+PASS  network error is counted as a failure :: 1
+PASS  network error names the exception :: RequestException
+
+ALL CHECKS PASSED
+PASS  one rate per candle :: 10
+PASS  millisecond offsets still match :: [1e-05, 2e-05, 3.0000000000000004e-05, 4e-05, 5e-05, 6.000000000000001e-05, 7.000000000000001e-05, 8e-05, 9e-05, 0.0001]
+PASS  rates land on the right bar :: 5e-05
+PASS  gaps become zero :: [0.0, 0.0, 0.0002, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+PASS  the known hour is filled :: 0.0002
+PASS  count of non-zero matches the input
+PASS  empty funding yields zeros
+PASS  early hour is not smeared
+PASS  the following hour is exact :: 0.0009
+
+ALL CHECKS PASSED
+2026-10-21 06:50:03,314 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:03,314 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:03,314 | INFO | config 7c09d38e (26 params) cold start
+thresholds: entry=0.55 strong=0.70 book_max_age=3s holding=12h min_rr_after_costs=1.5
+
+PASS  entry threshold 0.55 :: 0.55
+PASS  strong threshold 0.70 :: 0.7
+PASS  book freshness 3s :: 3
+PASS  fresh capital :: 10000.0
+PASS  cost = entry fee + exit fee + both legs slippage :: 0.001150 vs 0.001150
+PASS  long pays positive funding :: 0.002350
+PASS  long is not charged negative funding
+PASS  short pays negative funding
+PASS  short is not charged positive funding
+PASS  realised loss at stop <= risk budget :: 100.000000 vs 100.000000
+PASS  sizing is smaller than the cost-blind formula :: 0.988631 vs 1.000000
+PASS  adverse funding shrinks size :: 0.933271 vs 0.988631
+PASS  target barely above costs is rejected
+PASS  4.8xATR target clears costs :: 0.02736 vs 0.00172
+PASS  status exposes convergence :: 0.55
+PASS  status exposes book age
+PASS  status exposes the live cost model :: 0.00115
+
+ALL CHECKS PASSED
+PASS  lot size is 2.5% of equity
+PASS  lot size never goes to zero
+PASS  stop distance is 20%
+PASS  cheap gate is 1.5%
+PASS  metrics count lots
+PASS  metrics winrate :: 66.7
+PASS  metrics profit factor :: 0.096
+PASS  metrics expectancy is per lot :: -6.0267
+PASS  metrics realized sum
+PASS  metrics mtm drawdown from the curve :: 2.97
+PASS  metrics time below start :: 20.0
+PASS  metrics without losses has no pf
+PASS  centre is the 24h high :: 100.4
+PASS  one lot opened on the first level :: 1
+PASS  entry price is the level :: 98.894
+PASS  stop is 20% below the entry
+PASS  entry fee is charged once :: 0.00375
+PASS  open journal row written
+PASS  no exit on the entry bar :: (1, 0)
+PASS  target closes the lot :: 1
+PASS  target recorded as target :: target
+PASS  target cash = partial + rest :: (0.2388, 0.23875000000000002)
+PASS  partial journal row written
+PASS  no lots left open
+PASS  stop closes the lot
+PASS  stop wins over a target in the same bar :: stop
+PASS  stop loss is about -20% of the lot :: -5.0172
+PASS  two levels per coin fill :: {'AAA': 2, 'BBB': 2}
+PASS  per-coin cap holds :: {'AAA': 2, 'BBB': 2}
+PASS  total cap holds :: 4
+PASS  funding is not charged for the fill hour itself
+PASS  funding charged on the open notional :: 0.0025
+PASS  funding accumulates hourly :: 0.005
+PASS  negative funding is a credit :: 0.0025
+PASS  equity is cash + fees + funding + open mark :: (1000.0205463678282, 1000.0205463678282)
+PASS  equity is exposed in status :: (1000.02, 1000.0205463678282)
+PASS  status shows open risk
+PASS  open risk is 0.5% per lot
+PASS  restart restores the arm
+PASS  restart keeps open lots
+PASS  restart keeps the curve
+PASS  restart keeps costs
+PASS  restart keeps the equity
+PASS  after restart the lot is not duplicated :: (1, 1)
+PASS  a failing fetch does not raise
+PASS  a failing fetch is reported :: on_tick: api is down
+PASS  a failing fetch does not open anything
+PASS  the second failure still does not raise
+PASS  disabled arm does nothing
+PASS  hourly gate prevents a second run :: 1
+PASS  corrupt state is survivable
+PASS  corrupt state reports the error
+PASS  fake client has no order methods
+PASS  status exposes the pre-registered metrics
+PASS  max lots is 6
+PASS  lot fraction keeps the risk at half a percent
+PASS  universe has at least 20 coins :: 27
+
+ALL CHECKS PASSED
+2026-10-21 06:50:04,645 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,645 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,646 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,647 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,647 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,648 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,649 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,649 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,649 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,650 | INFO | CLOSE BTC @ 119.98 pnl=199.31 (stop)
+2026-10-21 06:50:04,653 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,653 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,654 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,654 | INFO | CLOSE X0 @ 94.99 pnl=-50.55 (stop)
+2026-10-21 06:50:04,656 | INFO | PAUSE: 2 losses in a row, entries blocked for 1.0h
+2026-10-21 06:50:04,656 | INFO | CLOSE X1 @ 94.99 pnl=-50.55 (stop)
+2026-10-21 06:50:04,659 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,660 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,660 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,660 | INFO | CLOSE Y @ 149.98 pnl=499.14 (target)
+2026-10-21 06:50:04,663 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,663 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,663 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,664 | INFO | CLOSE BTC @ 109.99 pnl=99.37 (target)
+2026-10-21 06:50:04,666 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,666 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,666 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,667 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,667 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,668 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,669 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,669 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,669 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,670 | INFO | OPEN LONG ETH @ 1000.12 size=3.4130 stop=986.5000 target=1048.00 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,672 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,672 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,673 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,673 | INFO | OPEN LONG ETH @ 1000.12 size=6.8259 stop=986.5000 target=1048.00 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,675 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,676 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,676 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,676 | INFO | OPEN LONG BTC @ 1000.12 size=6.8259 stop=986.5000 target=1048.00 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,679 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,679 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,679 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,686 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,686 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,704 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,705 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,706 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,706 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,707 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,707 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,707 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,708 | INFO | skip SOL: long risk would exceed the 0.5% directional cap
+2026-10-21 06:50:04,709 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,709 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,709 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,710 | INFO | OPEN LONG SOL @ 100.0125 size=9.8863 stop=90.0000 target=148.0000 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,711 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,711 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,711 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,712 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,713 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,713 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,713 | INFO | CLOSE SOL @ 89.99 pnl=-100.52 (stop)
+2026-10-21 06:50:04,715 | INFO | CLOSE SOL @ 89.99 pnl=-100.52 (stop)
+2026-10-21 06:50:04,718 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,719 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,719 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,719 | INFO | CLOSE XRP @ 149.98 pnl=499.14 (target)
+2026-10-21 06:50:04,722 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,722 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,723 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,723 | INFO | OPEN LONG SOL @ 100.0125 size=9.8863 stop=90.0000 target=148.0000 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,723 | INFO | CLOSE SOL @ 149.98 pnl=493.34 (target)
+2026-10-21 06:50:04,724 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,725 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,725 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,725 | INFO | OPEN LONG SOL @ 100.0125 size=9.8863 stop=90.0000 target=148.0000 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,725 | INFO | CLOSE SOL @ 89.99 pnl=-99.50 (target)
+2026-10-21 06:50:04,726 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,726 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,727 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,727 | INFO | OPEN LONG SOL @ 100.0125 size=9.8863 stop=90.0000 target=148.0000 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,727 | INFO | PARTIAL SOL closed 50% @ 129.98 booked pnl=147.86
+2026-10-21 06:50:04,727 | INFO | CLOSE SOL @ 149.98 pnl=246.67 (target)
+2026-10-21 06:50:04,728 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,729 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,729 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,729 | INFO | OPEN LONG SOL @ 100.0125 size=9.8863 stop=90.0000 target=148.0000 score=0.60 normal slip=0.010%
+2026-10-21 06:50:04,730 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:04,730 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:04,730 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:04,731 | INFO | OPEN LONG SOL @ 100.0125 size=9.8863 stop=90.0000 target=148.0000 score=0.60 normal slip=0.010%
+PASS  SHORTS_ENABLED is a bool
+PASS  ATR_TRAIL_MULT is numeric
+PASS  PARTIAL_RATIO is numeric :: 0.5
+PASS  correlation clusters cover the universe :: ['ai', 'defi', 'l1', 'l2', 'majors', 'memes', 'metals', 'privacy']
+PASS  every cluster has members
+PASS  cluster_of finds a member
+PASS  blacklist and whitelist are sets
+PASS  daily stop is configurable :: 0.1
+PASS  negative edge with mult 0 stops risking
+PASS  negative edge with mult 1 risks the minimum :: 0.005
+PASS  the old constant floor is gone :: 0.00500
+PASS  positive edge risks within the band :: 0.015
+PASS  trail off keeps the old fixed stop :: 100.0
+PASS  trail on moves the stop with price :: 115.0
+PASS  trail keeps ratcheting :: 125.0
+PASS  trail never loosens :: 125.0
+PASS  two losses arm the pause :: 1792558204.6565657
+PASS  consecutive losses counted :: 2
+PASS  a win resets the counter
+PASS  a win clears no pause
+PASS  a signal exists before the close
+PASS  closing drops the coin's signals
+PASS  whitelisted coin is sized larger :: 1.482946 vs 0.988631
+PASS  the bonus is exactly applied :: 1.5
+PASS  high-vol regime has a stricter multiplier :: {'low': 1.0, 'normal': 1.0, 'high': 1.1}
+PASS  calm regimes are unchanged
+PASS  high volatility is risked smaller :: 0.494315 vs 0.988631
+PASS  calm volatility is risked larger :: 1.186357 vs 0.988631
+PASS  the high multiplier is exactly applied :: 0.5
+PASS  open_position sizes with the regime it was given :: {'ETH': Position(symbol='ETH', direction='long', entry=1000.1249999999999, size=3.41296928327645, stop=986.5, target=1048.0, risk_dist=13.5, atr_at_entry=10.0, initial_size=3.41296928327645, initial_risk_usd=46.07508532423208, partial_done=False, realized_pnl=0.0, entry_fee=1.5360281569965868, context={'score': 0.6, 'strength': 'normal', 'regime': 'high', 'sizing_regime': 'high', 'atr_pct': 1.0, 'funding_bp_h': 0.0, 'slip_pct': 0.01, 'edge_pct': 4.787, 'cost_pct': 0.115, 'coverage_x': 41.63, 'cluster': 'majors', 'risk_usd': 46.08, 'risk_pct_equity': 0.46}, entry_time=1792554604.6699712)}
+PASS  the journal records the sizing regime :: high
+PASS  the market regime is kept separately :: high
+PASS  the same entry is smaller in high volatility :: 3.412969 vs 6.825939
+PASS  an unknown regime falls back to normal :: normal
+PASS  every snipe is counted :: 225
+PASS  the history window is bounded :: 200
+PASS  stats expose the dashboard key total_snipes :: ['avg_slippage_bps', 'avg_slippage_pct', 'history_kept', 'rejected', 'rejected_snipes', 'strong_pct', 'strong_snipes', 'total_snipes']
+PASS  stats expose the dashboard key rejected_snipes :: ['avg_slippage_bps', 'avg_slippage_pct', 'history_kept', 'rejected', 'rejected_snipes', 'strong_pct', 'strong_snipes', 'total_snipes']
+PASS  stats expose the dashboard key strong_snipes :: ['avg_slippage_bps', 'avg_slippage_pct', 'history_kept', 'rejected', 'rejected_snipes', 'strong_pct', 'strong_snipes', 'total_snipes']
+PASS  stats expose the dashboard key avg_slippage_bps :: ['avg_slippage_bps', 'avg_slippage_pct', 'history_kept', 'rejected', 'rejected_snipes', 'strong_pct', 'strong_snipes', 'total_snipes']
+PASS  total_snipes is the counter, not the window :: 225
+PASS  slippage is averaged into bps :: 5.0
+PASS  the old key names still work
+PASS  the old 1.5 multiplier really was unreachable :: 0.8250000000000001
+PASS  the current worst regime is reachable :: 0.6050000000000001
+PASS  the hard cap sits below the score ceiling :: 0.72
+PASS  the cap still bites on a hypothetical 1.5
+PASS  same-cluster risk is summed :: 200.0
+PASS  another cluster is not counted :: 100.0
+PASS  the clusters cover the live universe :: ['AAVE', 'ADA', 'AERO', 'ARB', 'ARKM', 'ASTER', 'AVAX', 'BNB', 'BTC', 'CRV', 'DOGE', 'ETH', 'FET', 'HYPE', 'LINK', 'LTC', 'MANTA', 'NEAR', 'ONDO', 'OP', 'PAXG', 'RNDR', 'SOL', 'STRK', 'SUI', 'TAO', 'TRUMP', 'UNI', 'XMR', 'XRP', 'ZEC']
+PASS  direction risk counts only shorts :: 100.0
+PASS  direction risk counts only longs :: 100.0
+PASS  a 0.5% directional cap refuses a 1% position
+PASS  a 5% directional cap allows it
+PASS  a liquid coin clears the old flat floor
+PASS  a genuinely thin book is refused :: checks failed: spread,liquidity
+PASS  the reason names the failing check plainly :: checks failed: spread,liquidity
+PASS  a small order fits a deep book
+PASS  an oversized order is refused :: checks failed: liquidity
+PASS  large prices stay short :: 82178.50
+PASS  mid prices keep four digits :: 7.4154
+PASS  cheap prices keep five :: 0.08120
+PASS  DOGE entry stop and target no longer look identical
+PASS  a fresh coin is not benched
+PASS  one stop does not bench
+PASS  two stops bench the coin
+PASS  the bench appears in the list
+PASS  stops outside the window do not bench
+PASS  only recent stops count
+PASS  the pause expires on its own
+PASS  zero stops switches the feature off
+PASS  stop 1 is recorded :: [1792554604.7135649]
+PASS  stop 2 is recorded :: [1792554604.7135649, 1792554604.7157316]
+PASS  the second stop benches the coin
+PASS  a winning exit is not counted
+PASS  stops are written into the state snapshot
+PASS  a winning trade matches the cash it moved :: (492.894244, 492.894244)
+PASS  a losing trade matches the cash it moved :: (-99.943159, -99.943159)
+PASS  a trade with a partial matches the cash it moved :: (394.08801, 394.08801)
+PASS  the entry fee is stored on the position :: 0.44493944636678195
+PASS  a fresh Position defaults to no entry fee
+
+ALL CHECKS PASSED
+PASS  gz reader gets 200 :: 200
+PASS  gz reader is told gzip :: gzip
+PASS  gzip response varies by encoding :: Accept-Encoding
+PASS  gzip body round-trips
+PASS  gzip actually shrinks the payload :: 327
+PASS  plain reader gets 200 :: 200
+PASS  plain reader gets no encoding
+PASS  plain body is the same JSON
+PASS  health stays tiny and plain
+PASS  dashboard is served :: 44135
+PASS  dashboard is html :: text/html; charset=utf-8
+PASS  dashboard is compressed for browsers :: (200, 'gzip', 13325)
+PASS  registry has category tabs
+PASS  registry rows are collapsed by default
+PASS  registry rows expand on tap
+PASS  registry tab survives the 5s refresh
+PASS  old always-expanded card wall is gone
+PASS  registry tabs wrap instead of scrolling sideways :: display:flex;flex-wrap:wrap;gap:6px;padding:2px 0
+PASS  gray status is worded as not built, not as absence of a feature
+PASS  unknown path is 404 :: 404
+
+ALL CHECKS PASSED
+PASS  length matches for trial 0 :: 267 vs 267
+PASS  length matches for trial 1 :: 85 vs 85
+PASS  length matches for trial 2 :: 271 vs 271
+PASS  length matches for trial 3 :: 111 vs 111
+PASS  length matches for trial 4 :: 111 vs 111
+PASS  length matches for trial 5 :: 210 vs 210
+PASS  length matches for trial 6 :: 254 vs 254
+PASS  length matches for trial 7 :: 133 vs 133
+PASS  atr_series is bit-identical to per-prefix atr :: max diff 0.000e+00
+PASS  from_len=30 yields len-29 values :: 171
+PASS  last value equals atr on the full series
+PASS  short series yields nothing
+PASS  atr of a short series is 0
+PASS  sma averages the tail
+PASS  ema of a constant is that constant
+PASS  adx needs history
+PASS  adx returns a usable number :: 100.07902232996364
+PASS  adx is higher in a trend than in chop :: 100.1
+
+ALL CHECKS PASSED
+max_entries=400 dedupe_sec=300
+
+PASS  add returns the entry :: dict
+PASS  seq starts at 1 :: 1
+PASS  module/action kept
+PASS  symbol kept
+PASS  reason kept verbatim
+PASS  numbers travel with the reason :: {'notional': 336.0, 'coverage_x': 4.4}
+PASS  time is HH:MM:SS :: 06:50:06
+PASS  repeat inside window is suppressed
+PASS  suppressed entry not appended :: 1
+PASS  suppression counted in dropped :: 1
+PASS  other symbol not suppressed
+PASS  other action not suppressed
+PASS  explicit key separates two reasons with the same text
+PASS  changing reason with stable key is deduped :: (1, 4)
+PASS  dedupe=0 keeps every occurrence :: 4
+PASS  same decision after the window is recorded again
+PASS  cap enforced :: 3
+PASS  newest kept :: ['r3', 'r4', 'r5']
+PASS  seq keeps counting past the cap :: 6
+PASS  recent is newest first :: ['r5', 'r4']
+PASS  counts shape :: {'pairs.open': 2, 'pairs.close': 1}
+PASS  dedupe index is pruned :: 11
+PASS  round trip keeps entries :: 2
+PASS  round trip keeps seq :: (2, 2)
+PASS  round trip keeps dropped
+PASS  round trip keeps the data payload :: {'pnl': 1.5}
+PASS  repeat after restore is suppressed
+PASS  restored suppression counted :: 1
+PASS  a decision the restore did not see still lands
+PASS  stable key survives restore
+PASS  from_state survives None
+PASS  from_state survives {}
+PASS  from_state survives []
+PASS  from_state survives 'garbage'
+PASS  from_state survives {'entries': 'nope'}
+PASS  from_state survives {'entries': [1, 2, {}]}
+PASS  fmt(None) is n/a :: n/a
+PASS  fmt(1.2345) respects digits :: 1.23
+PASS  None payload values dropped :: {'good': 1.0}
+PASS  absent payload omits the key entirely
+
+ALL CHECKS PASSED
+PASS  every coin is ranked :: 8
+PASS  weakest comes first :: {'symbol': 'AAA', 'ret': -0.19999999999999996, 'atr_pct': None, 'px': 80.0}
+PASS  strongest comes last :: {'symbol': 'HHH', 'ret': 0.19999999999999996, 'atr_pct': None, 'px': 120.0}
+PASS  the order is monotonic
+PASS  three pairs are opened :: 3
+PASS  the long legs are the three weakest :: ['AAA', 'BBB', 'CCC']
+PASS  the short legs are the three strongest :: ['HHH', 'GGG', 'FFF']
+PASS  each pair is long the weak and short the strong
+PASS  both legs carry the same notional
+PASS  notional follows exposure and pair count :: 333.3333333333333
+PASS  every pair is due in the configured hold time
+PASS  a thin universe opens nothing
+PASS  and says why :: not enough coins ranked (2)
+PASS  a winning pair is recorded :: {'trades': 1, 'wins': 1, 'pnl': 32.5666666666667, 'legs': 2}
+PASS  winrate counts it
+PASS  fees are charged on both legs :: (32.57, 33.33)
+PASS  profit stays positive after costs :: 32.5666666666667
+PASS  the closed record carries both legs :: {'long': 'AAA', 'short': 'HHH', 'long_ret': 5.0, 'short_ret': 5.0, 'pnl': 32.57, 'opened': 1000.0, 'closed': 173800.0, 'hours': 48.0, 'context': {'long': {'ret_pct': -20.0, 'atr_pct': None, 'funding_bp_h': None, 'vol_usd': None}, 'short': {'ret_pct': 20.0, 'atr_pct': None, 'funding_bp_h': None, 'vol_usd': None}, 'long_rank': 1, 'short_rank': 8, 'universe': 8, 'horizon_h': 168, 'cycle_h': 48}}
+PASS  a losing pair is booked as a loss :: -34.10000000000003
+PASS  and does not count as a win
+PASS  nothing closes early :: 3
+PASS  everything closes once due
+PASS  an unpriceable pair is kept, not dropped :: 3
+PASS  and nothing is booked :: {'trades': 0, 'wins': 0, 'pnl': 0.0, 'legs': 0}
+PASS  the reason is reported :: cannot price CCC/FFF yet
+PASS  it closes as soon as a price exists
+PASS  and the trades are booked :: {'trades': 3, 'wins': 3, 'pnl': 37.70000000000003, 'legs': 6}
+PASS  a disabled module does nothing
+PASS  the report exposes enabled :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes trades :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes winrate :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes pnl :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes unrealized :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes open :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes lookback_h :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes hold_h :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes n_pairs :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes exposure :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes next_rebalance_h :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes open_pairs :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report exposes recent :: ['costs', 'enabled', 'exposure', 'hold_h', 'last_error', 'lookback_h', 'n_pairs', 'next_rebalance_h', 'open', 'open_pairs', 'pnl', 'ranking', 'recent', 'trades', 'unrealized', 'winrate', 'wins']
+PASS  the report carries the parameters
+PASS  closing pairs moves the bot's cash :: (10000.0, 10097.700000000003)
+PASS  the cash move equals the booked PnL :: (97.70000000000255, 97.7000000000001)
+PASS  credited tracks the booked PnL :: 97.7000000000001
+PASS  a legacy state credits its whole PnL once :: 5008.0
+PASS  the gap is what was missing :: 8.0
+PASS  reconciling twice does nothing
+PASS  and the cash is unchanged the second time :: 5008.0
+
+ALL CHECKS PASSED
+stop=2.0xATR target=3.0xATR hold=72h max_open=2 cost=0.19%
+
+PASS  ema of a flat series is the price
+PASS  ema needs enough feed
+PASS  atr_last returns a number :: 1.01055458586845
+PASS  atr_last needs history
+PASS  ER of a straight line is 1.0 :: 1.0
+PASS  ER of a zigzag is near zero
+PASS  ER needs history
+PASS  rising price with widening range -> trend :: {'trend': 'trend', 'vol': 'turb', 'er': 1.0, 'atr_pct': 2.996, 'pct': 99.0}
+PASS  widening range -> turb :: {'trend': 'trend', 'vol': 'turb', 'er': 1.0, 'atr_pct': 2.996, 'pct': 99.0}
+PASS  cell predicate true
+PASS  flat price -> range :: {'trend': 'range', 'vol': 'calm', 'er': 0.0, 'atr_pct': 0.2, 'pct': 6.0}
+PASS  narrowing range -> calm :: {'trend': 'range', 'vol': 'calm', 'er': 0.0, 'atr_pct': 0.2, 'pct': 6.0}
+PASS  cell predicate false for range/calm
+PASS  in_cell tolerates None
+PASS  regime needs 30 days of history
+PASS  regime tolerates empty input
+PASS  no exit while price sits between the barriers
+PASS  stop hit is reported as stop :: (96.0, 1790021600000, 'stop')
+PASS  stop fills at the stop price :: (96.0, 1790021600000, 'stop')
+PASS  target hit is reported as target :: (106.0, 1790021600000, 'target')
+PASS  stop wins when one bar touches both :: (96.0, 1790021600000, 'stop')
+PASS  time stop closes at the close :: (100.0, 1790360000000, 'time')
+PASS  gross percent computed :: 6.0
+PASS  cost subtracted :: 5.81
+PASS  stats of nothing are zero
+PASS  stats count trades
+PASS  stats mean is right :: -0.3967
+PASS  stats profit factor is right :: 0.716
+PASS  stats t is negative here :: -0.207
+PASS  stats reasons counted :: {'stop': 1, 'target': 1, 'time': 1}
+PASS  phase recorded :: {'trend': 'trend', 'vol': 'turb', 'er': 1.0, 'atr_pct': 2.996, 'pct': 94.0}
+PASS  cell arm only runs in the cell
+PASS  cell arm capped at MAX_OPEN :: 2
+PASS  cell_all arm is uncapped by positions but one per coin :: 3
+PASS  control opens the same coins as cell here
+PASS  one position per coin per arm
+PASS  no cash attribute
+PASS  no order method
+PASS  on_tick respects the interval
+PASS  last_run unchanged inside the interval :: 1792880000000
+PASS  crash closes cell positions :: 2
+PASS  closed record carries a reason :: [{'arm': 'cell', 'coin': 'ETH', 'entry': 52.23844019141943, 'stop': 51.19502822992239, 'target': 53.80355813366498, 'sig_ts': 1790788400000, 'max_h': 72, 'phase': 'trend/turb', 'exit': 51.19502822992239, 'exit_ts': 1790792000000, 'why': 'stop', 'gross_pct': -1.9974, 'res_pct': -2.1874}]
+PASS  closed record is net of costs
+PASS  closed trades survive a restart :: (2, 2)
+PASS  last_run survives a restart
+PASS  phase survives a restart
+PASS  garbage state file is tolerated
+PASS  positions without sig_ts are dropped
+PASS  records without res_pct are dropped
+PASS  non-dict phase is dropped
+PASS  failing fetch does not raise
+PASS  failing fetch is recorded :: on_tick: api down
+PASS  failing fetch does not advance the hour
+PASS  empty candles do not raise
+PASS  no phase without candles
+PASS  journal records the opens :: 7
+PASS  journal keys are unique per arm and coin :: ['open:cell:ETH', 'open:control:ETH', 'open:cell_all:ETH', 'open:cell:SOL', 'open:control:SOL', 'open:cell_all:SOL', 'open:cell_all:AVAX']
+PASS  journal module is lab
+PASS  status reports where the state file is :: {'path': '/data/user/0/com.deepseek.harness/cache/tmp/labs-19lnjf5h/paper_lab.json', 'exists': True, 'bytes': 1861, 'saved_at': 1792554608}
+PASS  a lab that has saved reports the file :: {'path': '/data/user/0/com.deepseek.harness/cache/tmp/labs-19lnjf5h/paper_lab.json', 'exists': True, 'bytes': 1861, 'saved_at': 1792554608}
+PASS  the saved file has content :: {'path': '/data/user/0/com.deepseek.harness/cache/tmp/labs-19lnjf5h/paper_lab.json', 'exists': True, 'bytes': 1861, 'saved_at': 1792554608}
+PASS  a lab created on disk remembers it restored nothing
+PASS  a restarted lab restores its state :: True
+PASS  the restarted lab keeps its clock :: 1792898000000.0 vs 1792898000000
+PASS  the restarted lab keeps its closed trades :: 0 vs 0
+PASS  the restarted lab keeps its open trades :: 3 vs 3
+PASS  the restarted lab reports the file exists
+PASS  status says paper only :: paper only: no orders, no cash, no equity
+PASS  status exposes all three arms
+PASS  status exposes the phase
+
+ALL CHECKS PASSED
+2026-10-21 06:50:09,291 | INFO | bot v1.2 resumed from state_seed.json: trades=2 equity=9758.88 open=0
+2026-10-21 06:50:09,292 | INFO | config 7c09d38e (26 params) resumed
+2026-10-21 06:50:09,293 | INFO | epoch probe
+STATE_DIR = /data/user/0/com.deepseek.harness/cache/tmp/hl_state_mnnj8rxp
+
+PASS  seed loads :: /data/user/0/com.deepseek.harness/files/Repo2/hl-sniper/state_seed.json
+PASS  source is state_seed.json :: /data/user/0/com.deepseek.harness/files/Repo2/hl-sniper/state_seed.json
+PASS  no live state yet
+PASS  seed equity 9758.88 :: 9758.88
+PASS  seed has 2 trades :: 2
+PASS  seed has 1440 equity points
+PASS  seed has 3 snipes
+PASS  bot equity restored :: 9758.88
+PASS  bot peak restored :: 10000.0
+PASS  bot trades restored :: 2
+PASS  bot losses restored :: 2
+PASS  bot r_sum restored :: -2.26
+PASS  bot equity history restored
+PASS  bot sniper stats restored :: {'total_snipes': 3, 'rejected': 0, 'rejected_snipes': 0, 'strong_snipes': 0, 'strong_pct': 0.0, 'avg_slippage_pct': 0.0, 'avg_slippage_bps': 0.0, 'history_kept': 3}
+PASS  restart counted :: 1
+PASS  resume event logged :: [{'ts': 1792554609.3, 'msg': 'config 7c09d38e (26 params) resumed'}]
+PASS  old string events survive the upgrade :: ['01:40:48 | bot v1.1 initialized mode=paper capital=10000.00']
+PASS  new events carry an epoch :: {'ts': 1792554609.3, 'msg': 'epoch probe'}
+PASS  new events keep their text :: {'ts': 1792554609.3, 'msg': 'epoch probe'}
+PASS  state file written :: /data/user/0/com.deepseek.harness/cache/tmp/hl_state_mnnj8rxp/state.json
+PASS  live state wins over seed :: /data/user/0/com.deepseek.harness/cache/tmp/hl_state_mnnj8rxp/state.json
+PASS  live state keeps equity :: 9758.88
+PASS  round trip equity :: 123.45
+PASS  round trip nested
+PASS  schema stamped
+PASS  corrupt state falls back to seed :: /data/user/0/com.deepseek.harness/files/Repo2/hl-sniper/state_seed.json
+PASS  fallback still has bot data
+PASS  clear removes live file
+PASS  clear keeps seed
+
+ALL CHECKS PASSED
+2026-10-21 06:50:10,161 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:10,161 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:10,162 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:10,184 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:10,185 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:10,185 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:10,192 | INFO | watch: measured 2 coins
+PASS  registry is not empty :: 33
+PASS  ids are unique
+PASS  every entry has a name
+PASS  every entry has evidence
+PASS  every category is known :: ['filter', 'infra', 'risk', 'strategy']
+PASS  every status is known :: ['missing', 'off', 'on', 'paper', 'rejected']
+PASS  chart blocks are measured, not pending :: rejected
+PASS  cascade is measured, not pending :: rejected
+PASS  rejected entries cite their own measurement
+PASS  catalog covers all four categories
+PASS  build survives an empty status :: 33
+PASS  counts add up to total
+PASS  working equals on plus paper :: 16
+PASS  off plus rejected plus missing plus paper matches catalog
+PASS  pairs shows its live trade count :: open 3, realised $8.0
+PASS  pairs live detail carries winrate :: сделок 3, winrate 33.3%, нереализовано $19.63
+PASS  grid shows its open lots :: лотов 2, equity $999.89
+PASS  blacklist shows the benched coin :: GRASS
+PASS  cost gate shows the configured multiple :: порог x1.5
+PASS  sniper is off while config keeps it off :: off
+PASS  sniper flips to on when config enables it :: on
+PASS  pairs is off when the module is disabled
+PASS  grid is off when the lab is disabled
+PASS  alerts is off without a token
+PASS  alerts explains what is missing :: нет TELEGRAM_TOKEN или TELEGRAM_CHAT_ID
+PASS  alerts is on when the channel is configured :: on
+PASS  alerts shows delivered count, not a placeholder :: Telegram · отправлено 7
+PASS  alerts shows the last delivery error :: ошибок 1, последняя: HTTP 400
+PASS  alerts falls back to the env when status has no telegram block :: on
+PASS  alerts stays off without a chat id :: off
+PASS  status publishes coins :: 3
+PASS  coin row carries the measured price :: 1.8421
+PASS  coin row carries the 24h change :: -3.41
+PASS  coin row carries the rejection note :: score 0.42 ниже порога 0.55
+PASS  coin row carries the scan flags when there is no note :: covered by GRASS note above
+PASS  non-tradable coin is marked
+PASS  coin rows keep every documented field :: ['adx', 'atr_pct', 'benched', 'chg_24h', 'chg_7d', 'funding_bp', 'grid_lots', 'grid_unreal_pct', 'measured_ts', 'noise', 'note', 'pair', 'pos', 'price', 'score', 'sym', 'tradable', 'vol_usd']
+PASS  status publishes the strategy registry :: 33
+PASS  registry in status is built from the same status dict :: 17
+PASS  grid lot shows up on its coin row (no lots open yet, skipped)
+PASS  watch pass measured the healthy coins :: ['AAA', 'BBB']
+PASS  watch pass recorded how many it measured :: 2
+PASS  watch pass reports the coin that failed :: CCC: boom
+PASS  watch pass asked for every coin exactly once :: ['AAA', 'BBB', 'CCC']
+PASS  watch pass fills the 24h change :: 2.43
+PASS  watch pass fills the 7d change from 168 hourly candles :: (2.43, 18.28)
+PASS  watch pass fills funding in basis points :: 0.1
+PASS  watch pass fills the noise class :: calm
+PASS  watch pass leaves the score empty, because it does not score
+PASS  watch pass opens no positions
+PASS  watch pass opens no trades
+PASS  watch pass opens no grid lots
+PASS  status carries the watch counters :: {'seen': 2, 'error': 'CCC: boom'}
+PASS  measured coin reaches the table :: ['AAA', 'BBB', 'CCC']
+PASS  table row carries the 7d change from the watch pass :: 18.28
+PASS  table row carries the measurement timestamp :: 1792554610.1889474
+
+ALL CHECKS PASSED
+2026-10-21 06:50:11,070 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:11,070 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:11,071 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:11,071 | INFO | PARTIAL BTC closed 50% @ 119.98 booked pnl=99.66
+2026-10-21 06:50:11,081 | INFO | CLOSE BTC @ 129.98 pnl=149.63 (target)
+2026-10-21 06:50:11,084 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:11,085 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:11,085 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:11,085 | INFO | CLOSE ETH @ 109.99 pnl=99.37 (target)
+2026-10-21 06:50:11,088 | INFO | RESET_STATE set: starting from a clean state
+2026-10-21 06:50:11,089 | INFO | bot v1.1 initialized mode=paper capital=10000.00
+2026-10-21 06:50:11,089 | INFO | config 7c09d38e (26 params) cold start
+2026-10-21 06:50:11,090 | INFO | PARTIAL SOL closed 50% @ 104.99 booked pnl=24.70
+2026-10-21 06:50:11,091 | INFO | CLOSE SOL @ 94.99 pnl=-25.27 (stop)
+PASS  partial books a profit :: 99.66
+PASS  partial halves the position :: 5.0
+PASS  partial raises cash :: 99.66
+PASS  trade pnl is the closing leg plus the partial :: 249.28 vs 249.57
+PASS  trade pnl exceeds the closing leg alone :: 249.28
+PASS  partial is reported separately :: 99.66
+PASS  R multiple uses the combined pnl :: 2.49
+PASS  win counted once :: (1, 0)
+PASS  cash matches the booked pnl :: 10249.28 vs 10249.28
+PASS  no partial means no partial pnl
+PASS  plain trade pnl is unchanged :: 99.37 vs 99.37
+PASS  R multiple is about 1 :: 0.99
+PASS  small partial then a stop is still one trade
+PASS  loss counted once :: (0, 1)
+
+ALL CHECKS PASSED
+PASS  atr_pct returns a number :: 0.58069498069497
+PASS  choppy atr > steady atr :: 8.667 vs 0.581
+PASS  steady wickiness < choppy :: 1.47 vs 1.82
+PASS  trend efficiency > chop efficiency :: 1.000 vs 0.000
+PASS  perfect trend is near 1.0 :: 1.0
+PASS  impact_bps computes
+PASS  impact missing is None
+PASS  atr_pct short series is None
+PASS  calm scores low :: 13.6
+PASS  wild scores high :: 84.0
+PASS  score is capped at 100
+PASS  classify calm :: calm
+PASS  classify toxic at the top
+PASS  scan excluded the illiquid coin :: ['STEADY', 'CHOPPY', 'WILD', 'DEAD']
+PASS  scan excluded the 1000x builder ticker :: ['STEADY', 'CHOPPY', 'WILD', 'DEAD']
+PASS  scan excluded the HIP-3 namespaced market :: ['STEADY', 'CHOPPY', 'WILD', 'DEAD']
+PASS  dead ticker is not tradable
+PASS  dead ticker is flagged :: ['no_candles', 'wide_spread']
+PASS  dead ticker keeps an honest class, not a forced toxic :: calm
+PASS  dead ticker is out of the tradable list :: ['STEADY', 'CHOPPY']
+PASS  tradable list respects size :: 2
+PASS  every tradable coin has a class
+PASS  every tradable coin has a risk cap
+PASS  every tradable coin has a leverage cap
+PASS  tradable is sorted by noise then depth :: [15.5, 20.1]
+PASS  wild coin is riskier class than steady :: ('calm', 'noisy')
+PASS  no cache yet
+PASS  seed falls back to configured majors :: ['BTC', 'ETH', 'SOL']
+PASS  cache survives a round trip :: 2
+PASS  cache keeps names
+PASS  cache from an older scanner is rejected
+PASS  seed is used until a fresh scan lands
+
+ALL CHECKS PASSED

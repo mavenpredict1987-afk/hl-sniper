@@ -93,6 +93,16 @@ check("registry tab survives the 5s refresh",
       "var stTab='strategy'" in page and "stLast=sm" in page)
 check("old always-expanded card wall is gone",
       'class="sec-cap" style="margin:14px 0 8px"' not in page)
+# Four short tabs fit on a phone, so they wrap instead of scrolling: a scrolling
+# row got scrolled when the last tab was tapped and clipped the first one.
+tabs_css = ""
+if "\n.tabs{" in page:
+    tabs_css = page.split("\n.tabs{", 1)[1].split("}", 1)[0]
+check("registry tabs wrap instead of scrolling sideways",
+      "flex-wrap:wrap" in tabs_css and "overflow-x" not in tabs_css, tabs_css)
+# Gray "no" was read as "I do not own this feature"; it means "not built yet".
+check("gray status is worded as not built, not as absence of a feature",
+      "missing:['не сделано','off']" in page and "pchip('не сделано '" in page)
 
 code, headers, body = get("/nope")
 check("unknown path is 404", code == 404, code)

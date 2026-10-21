@@ -1,0 +1,34 @@
+PASS  atr_pct returns a number :: 0.58069498069497
+PASS  choppy atr > steady atr :: 8.667 vs 0.581
+PASS  steady wickiness < choppy :: 1.47 vs 1.82
+PASS  trend efficiency > chop efficiency :: 1.000 vs 0.000
+PASS  perfect trend is near 1.0 :: 1.0
+PASS  impact_bps computes
+PASS  impact missing is None
+PASS  atr_pct short series is None
+PASS  calm scores low :: 13.6
+PASS  wild scores high :: 84.0
+PASS  score is capped at 100
+PASS  classify calm :: calm
+PASS  classify toxic at the top
+PASS  scan excluded the illiquid coin :: ['STEADY', 'CHOPPY', 'WILD', 'DEAD']
+PASS  scan excluded the 1000x builder ticker :: ['STEADY', 'CHOPPY', 'WILD', 'DEAD']
+PASS  scan excluded the HIP-3 namespaced market :: ['STEADY', 'CHOPPY', 'WILD', 'DEAD']
+PASS  dead ticker is not tradable
+PASS  dead ticker is flagged :: ['no_candles', 'wide_spread']
+PASS  dead ticker keeps an honest class, not a forced toxic :: calm
+PASS  dead ticker is out of the tradable list :: ['STEADY', 'CHOPPY']
+PASS  tradable list respects size :: 2
+PASS  every tradable coin has a class
+PASS  every tradable coin has a risk cap
+PASS  every tradable coin has a leverage cap
+PASS  tradable is sorted by noise then depth :: [15.5, 20.1]
+PASS  wild coin is riskier class than steady :: ('calm', 'noisy')
+PASS  no cache yet
+PASS  seed falls back to configured majors :: ['BTC', 'ETH', 'SOL']
+PASS  cache survives a round trip :: 2
+PASS  cache keeps names
+PASS  cache from an older scanner is rejected
+PASS  seed is used until a fresh scan lands
+
+ALL CHECKS PASSED

@@ -119,16 +119,40 @@ off_grid = strategy_map.build(dict(status, grid={"enabled": False}))
 check("grid is off when the lab is disabled",
       {i["id"]: i for i in off_grid["items"]}["grid"]["status"] == strategy_map.OFF)
 
-saved_token = config.TELEGRAM_TOKEN
-try:
-    config.TELEGRAM_TOKEN = ""
-    no_tg = {i["id"]: i for i in strategy_map.build(status)["items"]}
-    config.TELEGRAM_TOKEN = "123:abc"
-    yes_tg = {i["id"]: i for i in strategy_map.build(status)["items"]}
-finally:
-    config.TELEGRAM_TOKEN = saved_token
+# Alert channel: the row must follow the delivered alerts, not a string that
+# was written once when the token was still missing.
+no_tg = {i["id"]: i for i in strategy_map.build(dict(
+    status, telegram={"configured": False, "token_set": False,
+                      "chat_set": False, "sent": 0, "failed": 0,
+                      "last_error": "нет токена или чата"}))["items"]}
 check("alerts is off without a token", no_tg["alerts"]["status"] == strategy_map.OFF)
-check("alerts is on with a token", yes_tg["alerts"]["status"] == strategy_map.ON)
+check("alerts explains what is missing",
+      "TELEGRAM_TOKEN" in (no_tg["alerts"].get("live_detail") or ""),
+      no_tg["alerts"].get("live_detail"))
+yes_tg = {i["id"]: i for i in strategy_map.build(dict(
+    status, telegram={"configured": True, "token_set": True, "chat_set": True,
+                      "sent": 7, "failed": 1, "last_error": "HTTP 400"}))["items"]}
+check("alerts is on when the channel is configured",
+      yes_tg["alerts"]["status"] == strategy_map.ON, yes_tg["alerts"]["status"])
+check("alerts shows delivered count, not a placeholder",
+      "7" in (yes_tg["alerts"].get("live") or ""), yes_tg["alerts"].get("live"))
+check("alerts shows the last delivery error",
+      "HTTP 400" in (yes_tg["alerts"].get("live_detail") or ""),
+      yes_tg["alerts"].get("live_detail"))
+# Older payloads without the telegram block still resolve from the env.
+saved_token, saved_chat = config.TELEGRAM_TOKEN, config.TELEGRAM_CHAT_ID
+try:
+    config.TELEGRAM_TOKEN, config.TELEGRAM_CHAT_ID = "123:abc", "42"
+    from_env = {i["id"]: i for i in strategy_map.build(status)["items"]}
+    config.TELEGRAM_CHAT_ID = ""
+    no_chat = {i["id"]: i for i in strategy_map.build(status)["items"]}
+finally:
+    config.TELEGRAM_TOKEN, config.TELEGRAM_CHAT_ID = saved_token, saved_chat
+check("alerts falls back to the env when status has no telegram block",
+      from_env["alerts"]["status"] == strategy_map.ON,
+      from_env["alerts"]["status"])
+check("alerts stays off without a chat id",
+      no_chat["alerts"]["status"] == strategy_map.OFF, no_chat["alerts"]["status"])
 
 # ------------------------------------------- bot publishes both new panels
 bot = Bot()

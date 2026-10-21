@@ -17,7 +17,8 @@ from levels import find_levels, breakout_confirmed
 from sniper import (SniperModule, generate_trend_signal, generate_volume_signal,
                     generate_orderbook_signal, generate_funding_signal)
 from health_server import start_health_server, HealthHandler
-from utils import setup_logging, send_telegram, money, price, logger, coverage_x
+from utils import (setup_logging, send_telegram, telegram_status, money, price,
+                   logger, coverage_x)
 import state_store
 import universe
 import journal
@@ -1086,6 +1087,9 @@ class Bot:
             # Read-only hourly measurement pass, so the panel can say how fresh
             # its per-coin numbers are and whether the pass is failing.
             "watch": {"seen": self.watch_seen, "error": self.watch_error},
+            # Whether alerts are really being delivered, so the registry can
+            # show it instead of a hardcoded line.
+            "telegram": telegram_status(),
             "config": getattr(self, "config_snapshot", None),
             "journal": self.journal.recent(30),
             "journal_counts": self.journal.counts(),
