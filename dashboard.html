@@ -203,6 +203,14 @@ table.list td{padding:7px 6px;border-bottom:1px solid rgba(35,40,55,.5);font-var
   </div></div></div>
 </div>
 
+<div class="acc">
+  <div class="acc-head" onclick="toggle('acc-grid')"><span class="acc-ico">&#9638;</span>Grid lab<span class="acc-sub" id="grid-sub">-</span><span class="acc-chev">&#9654;</span></div>
+  <div class="acc-body" id="acc-grid"><div class="acc-inner"><div style="padding-top:10px">
+    <div class="note">Paper only: own $1000 of imaginary capital, 0.5% risk per lot, no orders. Pre-registered in research/GRID_PREREG.md and judged at 100 closed lots, or switched off at a 12% mark-to-market drawdown.</div>
+    <div id="grid"></div>
+  </div></div></div>
+</div>
+
 <div class="upd" style="margin-top:14px">auto-refresh 5s - hl-sniper v1.2</div>
 
 <script>
@@ -503,6 +511,41 @@ function render(s){
     });
     if(lab.last_error) ah+='<div class="ev"><span style="color:var(--neg)">'+lab.last_error+'</span></div>';
     document.getElementById('lab').innerHTML=ah;
+  }
+
+  // paper grid arm: the reference bot's idea, sized at half a percent per lot.
+  // Mark-to-market drawdown is on the card because a grid that is judged only
+  // by closed trades looks profitable while it is under water.
+  var gl=s.grid||null;
+  if(gl){
+    document.getElementById('grid-sub').textContent=
+      (gl.enabled?'on':'off')+' / '+fmt(gl.open_count,0)+' open / '+
+      fmt(gl.lots_closed,0)+' lots';
+    var ddp=(gl.mtm_max_dd_pct||0), gh='';
+    gh+='<div class="cfg" style="margin-bottom:8px">'+
+      pchip('equity $'+fmt(gl.equity), (gl.equity||0)>=1000?'on':'off')+
+      pchip('mtm dd '+fmt(ddp,2)+'%', ddp>8?'warn':'')+
+      pchip('under water '+fmt(gl.pct_time_below_start,1)+'%')+
+      pchip('open risk $'+fmt(gl.open_risk_usd)+' / '+fmt(gl.open_risk_pct,2)+'%')+
+      pchip('hours '+fmt(gl.hours,0))+
+      pchip(gl.restored?'restored':'cold start', gl.restored?'':'off')+'</div>';
+    gh+='<div class="ev"><span><b>lots</b> '+fmt(gl.lots_closed,0)+
+      ' WR '+fmt(gl.winrate_pct,1)+'%'+
+      ' PF '+(gl.profit_factor===null||gl.profit_factor===undefined?'-':fmt(gl.profit_factor,2))+
+      ' E '+fmt(gl.expectancy_pct_per_lot,3)+'%/lot'+
+      ' realised $'+fmt(gl.realized_usd)+' costs $'+fmt(gl.costs_usd)+
+      ' <span style="color:var(--dim)">lot $'+fmt(gl.lot_usd)+'</span></span></div>';
+    (gl.open||[]).forEach(function(p){
+      var up=(p.unreal_pct>=0), col=up?'var(--green)':'var(--red)';
+      gh+='<div class="ev"><span><b>'+p.coin+'</b> '+
+        '<span style="color:var(--dim)">entry</span> '+fmt(p.entry,6)+
+        ' <span style="color:'+col+'">'+(up?'+':'')+fmt(p.unreal_pct,2)+'%</span>'+
+        ' <span style="color:var(--dim)">'+fmt(p.age_h,1)+'h, target +'+
+        fmt(p.to_target_pct,2)+'%, stop '+fmt(p.to_stop_pct,2)+'%</span></span></div>';
+    });
+    if(!(gl.open||[]).length) gh+='<div class="ev"><span style="color:var(--dim)">no open lots</span></div>';
+    if(gl.last_error) gh+='<div class="ev"><span style="color:var(--red)">'+gl.last_error+'</span></div>';
+    document.getElementById('grid').innerHTML=gh;
   }
 
 }
