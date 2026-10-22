@@ -18,6 +18,7 @@ import json
 import os
 import statistics
 import sys
+from operator import mul as _mul
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -72,7 +73,34 @@ def returns(series, end_idx, window):
     return out
 
 
+def prep(returns_map):
+    """Центрированные доходности + нормы: корреляция = скалярное произведение,
+    считается на уровне C через sum(map(mul,...)). Наивный вариант на 52 монетах
+    давал ~15с на цикл кластеризации."""
+    out = {}
+    for coin, r in returns_map.items():
+        n = len(r)
+        if n < 30:
+            continue
+        m = sum(r) / n
+        c = [x - m for x in r]
+        norm = sum(map(_mul, c, c)) ** 0.5
+        if norm > 0:
+            out[coin] = (c, norm)
+    return out
+
+
+def corr_prep(p, q):
+    a, na = p
+    b, nb = q
+    n = min(len(a), len(b))
+    if n < 30 or na <= 0 or nb <= 0:
+        return 0.0
+    return sum(map(_mul, a[-n:], b[-n:])) / (na * nb)
+
+
 def corr(a, b):
+    """Совместимость: корреляция по сырым рядам (медленный путь)."""
     n = min(len(a), len(b))
     if n < 30:
         return 0.0
@@ -80,11 +108,10 @@ def corr(a, b):
     ma = sum(a) / n
     mb = sum(b) / n
     va = sum((x - ma) ** 2 for x in a)
-    vb = sum((x - mb) ** 2 for x in b)
+    vb = sum((y - mb) ** 2 for y in b)
     if va <= 0 or vb <= 0:
         return 0.0
-    cov = sum((x - ma) * (y - mb) for x, y in zip(a, b))
-    return cov / (va ** 0.5 * vb ** 0.5)
+    return sum((x - ma) * (y - mb) for x, y in zip(a, b)) / (va ** 0.5 * vb ** 0.5)
 
 
 def clusters_from(returns_map, coins, threshold=CLUSTER_CORR):
@@ -92,12 +119,14 @@ def clusters_from(returns_map, coins, threshold=CLUSTER_CORR):
     groups = {c: [c] for c in coins}
     cache = {}
     coins = [c for c in coins if c in returns_map]
+    prepared = prep({c: returns_map[c] for c in coins})
 
     def avg_corr(g1, g2):
         key = (tuple(sorted(g1)), tuple(sorted(g2)))
         if key in cache:
             return cache[key]
-        vals = [corr(returns_map[a], returns_map[b]) for a in g1 for b in g2]
+        vals = [corr_prep(prepared[a], prepared[b]) for a in g1 for b in g2
+                if a in prepared and b in prepared]
         v = sum(vals) / len(vals) if vals else 0.0
         cache[key] = v
         return v
@@ -211,7 +240,8 @@ def run(series, timeline, mode, capital=CAPITAL):
                 gross += per_leg * r
             cost = 2.0 * per_leg * (TAKER_PCT / 100.0) * 2.0   # 2 ноги х вход+выход
             pnl = gross - cost
-            cycle["pairs"].append({"long": strong, "short": weak,
+            # ярлыки как в живой логике: лонг - слабая монета, шорт - сильная
+            cycle["pairs"].append({"long": weak, "short": strong,
                                    "gross": gross, "cost": cost, "pnl": pnl})
             cycle["net"] += pnl
         equity += cycle["net"]
