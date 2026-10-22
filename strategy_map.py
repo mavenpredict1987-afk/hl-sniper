@@ -51,8 +51,11 @@ CATALOG = (
          evidence="+0.02%/сделку после издержек - ноль"),
     dict(id="rsi2", cat=CAT_STRATEGY, name="Свинг-реверсия RSI(2)", status=REJECTED,
          evidence="наш замер 21.10: PF 0.97 с фильтром SMA100, DD 47-77% без фильтра"),
-    dict(id="levels", cat=CAT_STRATEGY, name="Отскок от уровня", status=OFF,
-         evidence="уровни считаются (levels.py), входа по ним нет; у него бэктест -$37"),
+    dict(id="levels", cat=CAT_STRATEGY, name="Отскок от уровня", status=REJECTED,
+         evidence="наш замер 22.10 (#28): пин-бар/поглощение у уровня с входом на "
+                  "подтверждении - 5509 сделок на H1, нетто -0.16%/сделку, t=-5.35, "
+                  "PF 0.84; на H4 1299 сделок, -0.17%, t=-1.74. Стопы и цели 2674/2647 - "
+                  "монетка, которую съедают комиссии; на реал не берём"),
     dict(id="momentum", cat=CAT_STRATEGY, name="Моментум интрадей", status=REJECTED,
          evidence="его данные: убыточен в 4/4 окнах, t=-5..-7; наш замер не понадобился"),
     dict(id="scalper", cat=CAT_STRATEGY, name="Скальпер", status=REJECTED,
