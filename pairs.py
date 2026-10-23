@@ -18,8 +18,12 @@ Why it is built this way:
 * The direction is MEAN REVERSION: long the loser, short the winner. The
   opposite (long the winner) lost 3-25%, so the sign matters.
 * Shorter lookbacks (24h) did not survive the half split. Seven days did.
-* Funding is close to neutral by construction: the long pays what the short
-  receives, since both legs sit on the same venue.
+* Funding is NOT neutral by construction, this was an error in the original
+  note: every leg is charged its own hourly rate, so the pair nets
+  funding_short - funding_long. Measured on 208 days (RESEARCH_LOG #33) that
+  difference was POSITIVE, +27.30 USD on top of +138.81 unrealised before it,
+  because the short legs (strong coins) usually sit in higher positive funding
+  than the long legs (weak coins). The backtests before #33 omitted it.
 
 Paper first. This module sizes and books positions internally and places no
 orders; switching it to live needs the same care as any other real-money code.
