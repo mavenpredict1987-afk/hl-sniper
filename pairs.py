@@ -1,14 +1,22 @@
 """pairs.py — market-neutral pairs module.
 
-The only strategy in this project that survived an out-of-sample split. Buying
-the weakest coins and shorting the strongest, equal notional, held a couple of
-days:
+STATUS (2026-10-23, RESEARCH_LOG #35): NOT VALIDATED. The +17.9% over 208 days
+quoted below came from ONE 48-hour grid alignment. Shifting the grid by 1..47
+hours gives a median of -444 USD over 48 alignments, only 9 of 48 positive, and
+the per-cycle spread return at the original alignment has t = 0.63 - i.e. the
+edge is not distinguishable from zero, and the average over all alignments is
+negative BEFORE costs. The live paper module keeps running until the freeze
+ends (2026-10-31) purely as a forward measurement, not as a validated edge.
 
+Historical numbers, from the single alignment (kept so the record of how we
+fooled ourselves survives):
     full 208 days   +17.9%  PF 1.22  DD 5.4%  corr to market -0.146
     first half      +10.5%  PF 1.30  DD 4.5%
     second half      +7.8%  PF 1.19  DD 5.4%
 
-Eight further variants (2/3/5/8 pairs, 20%/40% exposure) were all positive.
+Eight further variants (2/3/5/8 pairs, 20%/40% exposure) were all positive -
+all measured on the same unlucky-for-us... actually lucky-for-us alignment,
+which is why they agreed.
 
 Why it is built this way:
 
