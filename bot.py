@@ -249,6 +249,7 @@ class Bot:
                 "stats": dict(self.pairs.stats),
                 "credited": self.pairs.credited,
                 "last_rebalance": self.pairs.last_rebalance,
+                "cost_samples": list(self.pairs.cost_samples[-200:]),
             },
             "consec_losses": self.consec_losses,
             "loss_pause_until": self.loss_pause_until,
@@ -327,6 +328,8 @@ class Bot:
         self.pairs.credited = float(pair_state.get("credited", 0.0))
         self.pairs.reconcile_cash()
         self.pairs.last_rebalance = float(pair_state.get("last_rebalance", 0.0))
+        self.pairs.cost_samples = [r for r in (pair_state.get("cost_samples") or [])
+                                   if isinstance(r, dict)][-200:]
         self.equity_history = [list(x) for x in (data.get("equity_history") or [])]
         self.journal.from_state(data.get("journal"))
         self.halted = bool(data.get("halted", False))

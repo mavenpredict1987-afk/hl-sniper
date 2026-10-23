@@ -41,6 +41,17 @@ class FakeClient:
         last = first * (1.0 + r)
         return [{"c": first}] * (n_bars - 1) + [{"c": last}]
 
+    def l2_book(self, symbol, depth=20):
+        """A book with a 10 bp spread and enough size to fill any test notional."""
+        r = self.returns.get(symbol)
+        if r is None:
+            return None
+        px = 100.0 * (1.0 + r)
+        bid, ask = px * 0.9995, px * 1.0005
+        size = 1e7 / px
+        return {"bids": [(bid, size)] * 5, "asks": [(ask, size)] * 5,
+                "bid_px": bid, "ask_px": ask}
+
 
 class FakeBot:
     def __init__(self, returns, equity=10000.0):
@@ -216,6 +227,71 @@ check("a legacy state credits its whole PnL once", abs(botb.cash - 5008.0) < 1e-
 check("the gap is what was missing", abs(gap - 8.0) < 1e-9, gap)
 check("reconciling twice does nothing", abs(modb.reconcile_cash()) < 1e-9)
 check("and the cash is unchanged the second time", abs(botb.cash - 5008.0) < 1e-9, botb.cash)
+
+# --- 8. execution cost measurement ---------------------------------------
+# The 0.23% model was never checked against a real book. These samples are how
+# it gets checked, so the arithmetic has to be right and quiet failures (a
+# missing book, a dead venue) must not corrupt the series.
+from pairs import COST_SAMPLES_CAP                            # noqa: E402
+
+botc = FakeBot(RETURNS)
+modc = PairsModule(botc)
+row = modc._book_cost("AAA", 500.0)
+check("a quote produces a measurable fill cost", row is not None and row["per_fill_pct"] > 0, row)
+check("per-fill cost is fee plus walk slippage",
+      abs(row["per_fill_pct"] - (config.TAKER_FEE * 100.0 + row["slip_pct"])) < 1e-9, row)
+check("a 10 bp spread costs about half a spread to cross",
+      0.04 < row["slip_pct"] < 0.06, row["slip_pct"])
+check("a deep book fills the whole notional", row["fill_pct"] >= 99.0, row["fill_pct"])
+
+empty = PairsModule(FakeBot(RETURNS)).execution_stats()
+check("no samples yet is reported, not invented",
+      empty["samples"] == 0 and empty["measured_round_trip_pct"] is None, empty)
+check("the model cost is reported anyway",
+      abs(empty["model_round_trip_pct"] - 0.23) < 1e-6, empty["model_round_trip_pct"])
+
+modc._record_cost("AAA", "open_long", 500.0)
+modc._record_cost("BBB", "open_short", 500.0)
+stats_c = modc.execution_stats()
+check("samples are counted", stats_c["samples"] == 2, stats_c["samples"])
+check("round trip is four fills",
+      abs(stats_c["measured_round_trip_pct"] - 4 * stats_c["median_per_fill_pct"]) < 1e-6, stats_c)
+check("the measured cost is compared with the model",
+      stats_c["ratio_vs_model"] is not None and stats_c["ratio_vs_model"] > 1.0, stats_c)
+check("stages are labelled", stats_c["by_stage"]["open_long"] == 1
+      and stats_c["by_stage"]["open_short"] == 1, stats_c["by_stage"])
+
+# A dead venue must not raise and must not fabricate a sample.
+class DeadBookClient(FakeClient):
+    def l2_book(self, symbol, depth=20):
+        return None
+
+botd = FakeBot(RETURNS)
+botd.client = DeadBookClient(RETURNS)
+modd = PairsModule(botd)
+check("a missing book records nothing", modd._record_cost("AAA", "open_long", 500.0) is None)
+check("and leaves the series empty", modd.cost_samples == [])
+
+# The series is bounded so it cannot grow the state file forever.
+modf = PairsModule(FakeBot(RETURNS))
+for i in range(COST_SAMPLES_CAP + 25):
+    modf.cost_samples.append({"per_fill_pct": 0.1, "stage": "open_long"})
+modf._record_cost("AAA", "open_long", 500.0)
+check("the sample series is capped", len(modf.cost_samples) == COST_SAMPLES_CAP,
+      len(modf.cost_samples))
+
+# Opening a cycle must sample every leg it opens.
+botg = FakeBot(RETURNS)
+modg = PairsModule(botg)
+with_config(PAIRS_ENABLED=True)
+modg._rebalance(1000.0)
+with_config(**{})
+check("every opened leg is sampled", len(modg.cost_samples) == 2 * config.PAIRS_N,
+      (len(modg.cost_samples), config.PAIRS_N))
+check("both stages of the open are present",
+      {r["stage"] for r in modg.cost_samples} == {"open_long", "open_short"},
+      [r["stage"] for r in modg.cost_samples])
+check("the report exposes the execution block", "execution" in modg.get_stats())
 
 print()
 if failures:

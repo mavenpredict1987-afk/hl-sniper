@@ -38,6 +38,12 @@ from utils import coverage_grade, coverage_x
 
 logger = logging.getLogger(__name__)
 
+# How many executions to remember for the cost measurement. Bounded because it
+# rides in the state file on the Railway volume: 400 samples is a couple of
+# hundred rounds of opens and closes, enough for a stable median, small enough
+# that the JSON stays under a few dozen KB.
+COST_SAMPLES_CAP = 400
+
 
 @dataclass
 class PairPosition:
@@ -111,6 +117,11 @@ class PairsModule:
         self.last_ranking: List[dict] = []
         self.history: List[float] = []
         self.last_error = ""
+        # Measured execution costs: what crossing the visible book would have
+        # cost at the moment we decided. Never used to change a fill - paper
+        # trading fills at the mid, and this experiment is frozen - only to
+        # check the 0.23% model against the venue.
+        self.cost_samples: List[dict] = []
 
     # ---------- instrumentation ----------
     def _journal(self, action, reason, symbol=None, **data):
@@ -147,6 +158,116 @@ class PairsModule:
         if not gross:
             return None
         return coverage_x(sum(gross) / len(gross), self.round_trip_cost_pct())
+
+    # ---------- execution cost measurement ----------
+    def _book_cost(self, symbol, notional):
+        """What a taker would actually pay to cross the book right now, in %.
+
+        Paper trading fills at the last mid, so this never moves a fill. It
+        records the venue's own prices: half-spread to cross plus the slippage
+        of walking `notional` through the visible levels, separately for the buy
+        and the sell side, taking the worse of the two. The per-fill cost is
+        then fee + that number, and four such fills are one pair round trip -
+        directly comparable with round_trip_cost_pct().
+        """
+        try:
+            book = self.bot.client.l2_book(symbol)
+        except Exception as exc:                     # venue slow is not fatal
+            self.last_error = "book %s: %s" % (symbol, exc)
+            return None
+        if not book:
+            return None
+        bid, ask = book.get("bid_px"), book.get("ask_px")
+        if not bid or not ask or bid <= 0 or ask <= 0 or ask < bid:
+            return None
+        mid = (bid + ask) / 2.0
+        spread_pct = (ask - bid) / mid * 100.0
+
+        def walk(levels):
+            """VWAP and filled notional (USD) when eating `levels` from the top."""
+            left, spent, qty = notional, 0.0, 0.0
+            for px, sz in levels:
+                if px <= 0 or sz <= 0:
+                    continue
+                use = min(left, px * sz)          # USD taken from this level
+                if use <= 0:
+                    continue
+                spent += use
+                qty += use / px                   # units bought/sold
+                left -= use
+                if left <= 1e-9:
+                    break
+            filled = notional - left
+            return (spent / qty if qty > 0 else None), filled
+
+        vwap_buy, fill_buy = walk(book.get("asks") or [])
+        vwap_sell, fill_sell = walk(book.get("bids") or [])
+        if not vwap_buy or not vwap_sell:
+            return None
+        slip_buy = (vwap_buy - mid) / mid * 100.0
+        slip_sell = (mid - vwap_sell) / mid * 100.0
+        slip_pct = max(slip_buy, slip_sell)
+        fee_pct = config.TAKER_FEE * 100.0
+        return {
+            "symbol": symbol,
+            "mid": mid,
+            "spread_pct": round(spread_pct, 4),
+            "half_spread_pct": round(spread_pct / 2.0, 4),
+            "slip_pct": round(slip_pct, 4),
+            "fill_pct": round(100.0 * min(fill_buy, fill_sell) / notional, 1)
+            if notional > 0 else 0.0,
+            "per_fill_pct": round(fee_pct + slip_pct, 4),
+            "notional": round(notional, 2),
+        }
+
+    def _record_cost(self, symbol, stage, notional):
+        """Fetch and remember one execution sample, never raising."""
+        row = self._book_cost(symbol, notional)
+        if row is None:
+            return None
+        row["stage"] = stage
+        row["t"] = round(time.time(), 0)
+        self.cost_samples.append(row)
+        if len(self.cost_samples) > COST_SAMPLES_CAP:
+            self.cost_samples = self.cost_samples[-COST_SAMPLES_CAP:]
+        return row
+
+    def _median(self, values):
+        vals = sorted(v for v in values if isinstance(v, (int, float)))
+        if not vals:
+            return None
+        n = len(vals)
+        return vals[n // 2] if n % 2 else (vals[n // 2 - 1] + vals[n // 2]) / 2.0
+
+    def execution_stats(self):
+        """Measured cost vs the model, in the same units as round_trip_cost_pct."""
+        model = self.round_trip_cost_pct()
+        rows = [r for r in self.cost_samples if isinstance(r.get("per_fill_pct"), (int, float))]
+        if not rows:
+            return {"samples": 0, "model_round_trip_pct": round(model, 3),
+                    "measured_round_trip_pct": None,
+                    "note": "no executions measured yet"}
+        per_fill = self._median([r["per_fill_pct"] for r in rows])
+        spread = self._median([r.get("spread_pct") for r in rows])
+        slip = self._median([r.get("slip_pct") for r in rows])
+        measured_rt = 4.0 * per_fill
+        worst_rt = 4.0 * max(r["per_fill_pct"] for r in rows)
+        full = [r for r in rows if (r.get("fill_pct") or 0) >= 99.0]
+        return {
+            "samples": len(rows),
+            "model_round_trip_pct": round(model, 3),
+            "measured_round_trip_pct": round(measured_rt, 3),
+            "measured_worst_round_trip_pct": round(worst_rt, 3),
+            "median_spread_pct": round(spread, 4) if spread is not None else None,
+            "median_walk_slip_pct": round(slip, 4) if slip is not None else None,
+            "median_per_fill_pct": round(per_fill, 4),
+            "model_per_fill_pct": round(model / 4.0, 4),
+            "ratio_vs_model": round(measured_rt / model, 2) if model else None,
+            "depth_full_pct": round(100.0 * len(full) / len(rows), 1),
+            "by_stage": {stage: sum(1 for r in rows if r.get("stage") == stage)
+                         for stage in ("open_long", "open_short",
+                                       "close_long", "close_short")},
+        }
 
     # ---------- data ----------
     def _leg_stats(self, symbol, hours):
@@ -270,6 +391,8 @@ class PairsModule:
                 opened=now, due=now + config.PAIRS_HOLD_H * 3600,
                 long_size=per_leg / lp, short_size=per_leg / sp,
                 context=context))
+            self._record_cost(weak["symbol"], "open_long", per_leg)
+            self._record_cost(strong["symbol"], "open_short", per_leg)
             self.bot._event("PAIRS open: long %s / short %s ($%.0f per leg)" % (
                 weak["symbol"], strong["symbol"], per_leg))
             self._journal(
@@ -307,6 +430,8 @@ class PairsModule:
             self.last_error = "cannot price %s/%s yet" % (pos.long_sym, pos.short_sym)
             return False
         cost = config.TAKER_FEE + config.SLIPPAGE / 4.0
+        self._record_cost(pos.long_sym, "close_long", pos.notional)
+        self._record_cost(pos.short_sym, "close_short", pos.notional)
 
         long_ret = lp / pos.long_entry - 1.0
         short_ret = 1.0 - sp / pos.short_entry
@@ -418,6 +543,7 @@ class PairsModule:
                 "coverage_x": round(ratio, 2) if ratio is not None else None,
                 "grade": coverage_grade(ratio),
                 "samples": len(gross)},
+            "execution": self.execution_stats(),
             "ranking": [{"symbol": r["symbol"], "ret_pct": round(r["ret"] * 100, 2)}
                         for r in self.last_ranking[:5]] +
                        [{"symbol": r["symbol"], "ret_pct": round(r["ret"] * 100, 2)}
