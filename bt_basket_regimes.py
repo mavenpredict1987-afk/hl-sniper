@@ -76,15 +76,17 @@ def metrics(curve, label):
             "sharpe": sharpe, "cagr_pct": (100 * cagr) if cagr is not None else None}
 
 
-def run_variant(px, qv, days, mode, start_i, end_i):
+def run_variant(px, qv, days, mode, start_i, end_i, cap=None, trend=None):
     """mode: 'BE' (100%), 'B' (vol target), 'B20' (vol target, cap 20%)."""
     uni = universe(px, qv, days, start_i)
     if not uni:
         return None
     # веса и единицы
     w = {c: 1.0 / len(uni) for c in uni}
+    if cap is None:
+        cap = 0.20 if mode == "B20" else 1.0
     eq = 1.0
-    exposure = 1.0 if mode != "B20" else 0.20
+    exposure = 1.0 if mode == "BE" else cap
     last_rebal = start_i
     curve = [1.0]
     bret = []                      # дневные доходности корзины (для σ)
@@ -107,8 +109,13 @@ def run_variant(px, qv, days, mode, start_i, end_i):
                 sd = statistics.stdev(recent)
                 ann = sd * math.sqrt(365)
                 target = min(1.0, TARGET_VOL / ann) if ann > 0 else 1.0
-                if mode == "B20":
-                    target = min(target, 0.20)
+                target = min(target, cap)
+                if trend:
+                    win, mult = trend
+                    if len(bret) >= win:
+                        tr = sum(bret[-win:])
+                        if tr < 0:
+                            target *= mult
                 # ребаланс по порогу и не чаще MIN_DAYS
                 if abs(target - exposure) > REBAL_THR and (i - last_rebal) >= MIN_DAYS:
                     turnover_cost += COST * abs(target - exposure) * 2
